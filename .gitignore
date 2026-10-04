@@ -1,0 +1,30 @@
+# Ignore everything unless explicitly allowed below.
+*
+
+# Repository documentation and tracking rules.
+!/.gitignore
+!/README.md
+
+# Locally authored skills and their supporting files.
+!/skills/
+!/skills/cleanup/
+!/skills/cleanup/**
+!/skills/merge-prs/
+!/skills/merge-prs/**
+!/skills/rephrase/
+!/skills/rephrase/**
+!/skills/summarize/
+!/skills/summarize/**
+
+# Synced skills stay local and are never tracked.
+/skills/synced/
+
+!AGENTS.md
+
+# Keep generated files ignored even inside an allowed skill.
+.DS_Store
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+node_modules/
