@@ -1,0 +1,6 @@
+interface:
+  display_name: "E2E Worktree"
+  short_description: "Complete tasks in a new worktree and deliver a PR"
+  default_prompt: "Use $e2e-worktree to implement this task in a new worktree, commit the changes, review and fix critical issues, push, and open a PR."
+policy:
+  allow_implicit_invocation: false

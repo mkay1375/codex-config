@@ -10,8 +10,7 @@ When a task is too big to do well in one pass, split it into parts and work thro
 
 Don't start a part that depends on another until that one is committed. Parts that don't
 depend on each other can run at the same time: launch their subagents together, then commit
-each part as it finishes. Assign separate worktrees when agents may edit overlapping files;
-spawning a Codex subagent does not itself isolate its checkout. Once every part is done,
+each part as it finishes. Once every part is done,
 review the whole change as one piece and fix what the review finds.
 
 ## Marking a PR reviewed
