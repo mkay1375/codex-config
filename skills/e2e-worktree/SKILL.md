@@ -22,9 +22,12 @@ be identified from the conversation and workspace, ask for the missing informati
   GitLab, including self-hosted instances. Select the repository and host explicitly when
   CLI defaults could target another repository. Report missing authentication or permissions
   accurately; continue independent local work when useful.
-- Use the requested base branch, otherwise the repository's established integration branch
-  or remote default branch. Fetch it before branching. If the task explicitly builds on an
+- Start from `main` and use `main` as the PR base by default, unless the user specifies
+  another starting branch/ref or PR target. Fetch the selected starting branch before
+  branching and use its fetched remote reference. If the task explicitly builds on an
   existing feature branch, use that starting point and preserve the intended PR target.
+  If `main` is unavailable, report it and ask for a starting branch instead of silently
+  substituting the current branch, integration branch, or remote default branch.
 - Create a unique task branch and a new worktree at a writable path with
   `git worktree add -b <task-branch> <absolute-worktree-path> <starting-ref>`.
   Avoid branch or directory collisions. Run all task edits, Git commands, and checks in that
