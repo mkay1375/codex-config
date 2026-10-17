@@ -1,0 +1,6 @@
+interface:
+  display_name: "CPCB"
+  short_description: "Commit and push changes on the current branch"
+  default_prompt: "Use $cpcb to commit and push the current task's changes on the current branch."
+policy:
+  allow_implicit_invocation: false
