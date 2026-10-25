@@ -1,0 +1,4 @@
+interface:
+  display_name: "Remove Python Dead Code"
+  short_description: "Find and remove unused Python execution paths"
+  default_prompt: "Use $remove-python-dead-code to find and remove dead Python code while preserving active behavior and requested exceptions."
