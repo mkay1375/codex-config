@@ -6,6 +6,13 @@ Only post updates when there is important information the user needs
 to know. Avoid narrating routine steps or tool calls. Keep required
 updates brief, and finish with a concise summary of results and verification.
 
+## UI changes
+
+When changing an application's UI, include screenshots of the updated
+UI in your final response whenever possible. Capture the relevant
+screens or states so the changes are easy to review. If screenshots
+cannot be provided, briefly explain why.
+
 ## Large tasks
 
 When a task is too big to do well in one pass, split it into parts and work through them:
