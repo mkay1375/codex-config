@@ -1,0 +1,3 @@
+interface:
+  display_name: "Prune"
+  short_description: "Reduce code while preserving behavior and clarity"

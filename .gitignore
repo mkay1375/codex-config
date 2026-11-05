@@ -21,6 +21,8 @@
 !/skills/e2e-worktree/**
 !/skills/remove-python-dead-code/
 !/skills/remove-python-dead-code/**
+!/skills/prune/
+!/skills/prune/**
 
 # Synced skills stay local and are never tracked.
 /skills/synced/
