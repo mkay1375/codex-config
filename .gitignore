@@ -5,8 +5,10 @@
 !/.gitignore
 !/README.md
 
-# Locally authored skills and their supporting files.
+# Tracked skills and their supporting files.
 !/skills/
+!/skills/frontend-design/
+!/skills/frontend-design/**
 !/skills/cpcb/
 !/skills/cpcb/**
 !/skills/cleanup/
