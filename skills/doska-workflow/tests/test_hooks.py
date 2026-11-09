@@ -1,4 +1,7 @@
 import copy
+import os
+import shutil
+import shlex
 import importlib.util
 import json
 import sys
@@ -111,6 +114,15 @@ class HookTests(unittest.TestCase):
         run('finish',task,'--session','session-1','--state','Review','--summary','Ready')
         self.assertTrue(self.state.get('gate','session-1')['outcome'])
         self.assertEqual(len(self.state.events()),3)
+    def test_generated_hook_runs_outside_skill_directory(self):
+        source=Path(__file__).parents[1]/'scripts'
+        target=self.home/'skills/doska-workflow/scripts'
+        shutil.copytree(source,target)
+        command=setup.template()['hooks']['SessionStart'][0]['hooks'][0]['command']
+        env={**os.environ,'CODEX_HOME':str(self.home)}
+        result=subprocess.run(shlex.split(command),input=json.dumps({'hook_event_name':'SessionStart','session_id':'fresh'}),text=True,capture_output=True,cwd=self.home,env=env)
+        self.assertEqual(result.returncode,0,result.stderr)
+        self.assertEqual(json.loads(result.stdout)['hookSpecificOutput']['hookEventName'],'SessionStart')
     def test_setup_merge_idempotent_and_dry_helpers_no_activation(self):
         existing={'hooks':{'Stop':[{'hooks':[{'type':'command','command':'existing'}]}]},'other':'preserved'}
         original=copy.deepcopy(existing);proposed=setup.template()

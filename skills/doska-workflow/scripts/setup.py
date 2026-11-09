@@ -13,7 +13,7 @@ from doska_flow.model import FlowError
 EVENTS=('SessionStart','UserPromptSubmit','PreToolUse','PostToolUse','Stop','Interrupt','SessionEnd')
 
 def template():
-    code="import os,pathlib,runpy;runpy.run_path(str(pathlib.Path(os.environ.get('CODEX_HOME',str(pathlib.Path.home()/'.codex')))/'skills/doska-workflow/scripts/doska_flow.py'),run_name='__main__')"
+    code="import os,pathlib,runpy,sys;p=pathlib.Path(os.environ.get('CODEX_HOME',str(pathlib.Path.home()/'.codex')))/'skills/doska-workflow/scripts/doska_flow.py';sys.path.insert(0,str(p.parent));runpy.run_path(str(p),run_name='__main__')"
     suffix=' -c '+json.dumps(code)+' hook'
     return {'description':'Doska tracking: requires explicit activation and hook trust on each machine.', 'hooks':{event:[{'hooks':[{'type':'command','command':'python3'+suffix,'commandWindows':'python'+suffix,'timeout':3 if event in ('Interrupt','SessionEnd') else 10,'statusMessage':'Doska '+event}]}] for event in EVENTS}}
 
