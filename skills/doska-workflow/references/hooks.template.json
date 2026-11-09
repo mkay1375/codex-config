@@ -1,0 +1,96 @@
+{
+  "description": "Doska tracking: requires explicit activation and hook trust on each machine.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 -c \"import os,pathlib,runpy;runpy.run_path(str(pathlib.Path(os.environ.get('CODEX_HOME',str(pathlib.Path.home()/'.codex')))/'skills/doska-workflow/scripts/doska_flow.py'),run_name='__main__')\" hook",
+            "commandWindows": "python -c \"import os,pathlib,runpy;runpy.run_path(str(pathlib.Path(os.environ.get('CODEX_HOME',str(pathlib.Path.home()/'.codex')))/'skills/doska-workflow/scripts/doska_flow.py'),run_name='__main__')\" hook",
+            "timeout": 10,
+            "statusMessage": "Doska SessionStart"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 -c \"import os,pathlib,runpy;runpy.run_path(str(pathlib.Path(os.environ.get('CODEX_HOME',str(pathlib.Path.home()/'.codex')))/'skills/doska-workflow/scripts/doska_flow.py'),run_name='__main__')\" hook",
+            "commandWindows": "python -c \"import os,pathlib,runpy;runpy.run_path(str(pathlib.Path(os.environ.get('CODEX_HOME',str(pathlib.Path.home()/'.codex')))/'skills/doska-workflow/scripts/doska_flow.py'),run_name='__main__')\" hook",
+            "timeout": 10,
+            "statusMessage": "Doska UserPromptSubmit"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 -c \"import os,pathlib,runpy;runpy.run_path(str(pathlib.Path(os.environ.get('CODEX_HOME',str(pathlib.Path.home()/'.codex')))/'skills/doska-workflow/scripts/doska_flow.py'),run_name='__main__')\" hook",
+            "commandWindows": "python -c \"import os,pathlib,runpy;runpy.run_path(str(pathlib.Path(os.environ.get('CODEX_HOME',str(pathlib.Path.home()/'.codex')))/'skills/doska-workflow/scripts/doska_flow.py'),run_name='__main__')\" hook",
+            "timeout": 10,
+            "statusMessage": "Doska PreToolUse"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 -c \"import os,pathlib,runpy;runpy.run_path(str(pathlib.Path(os.environ.get('CODEX_HOME',str(pathlib.Path.home()/'.codex')))/'skills/doska-workflow/scripts/doska_flow.py'),run_name='__main__')\" hook",
+            "commandWindows": "python -c \"import os,pathlib,runpy;runpy.run_path(str(pathlib.Path(os.environ.get('CODEX_HOME',str(pathlib.Path.home()/'.codex')))/'skills/doska-workflow/scripts/doska_flow.py'),run_name='__main__')\" hook",
+            "timeout": 10,
+            "statusMessage": "Doska PostToolUse"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 -c \"import os,pathlib,runpy;runpy.run_path(str(pathlib.Path(os.environ.get('CODEX_HOME',str(pathlib.Path.home()/'.codex')))/'skills/doska-workflow/scripts/doska_flow.py'),run_name='__main__')\" hook",
+            "commandWindows": "python -c \"import os,pathlib,runpy;runpy.run_path(str(pathlib.Path(os.environ.get('CODEX_HOME',str(pathlib.Path.home()/'.codex')))/'skills/doska-workflow/scripts/doska_flow.py'),run_name='__main__')\" hook",
+            "timeout": 10,
+            "statusMessage": "Doska Stop"
+          }
+        ]
+      }
+    ],
+    "Interrupt": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 -c \"import os,pathlib,runpy;runpy.run_path(str(pathlib.Path(os.environ.get('CODEX_HOME',str(pathlib.Path.home()/'.codex')))/'skills/doska-workflow/scripts/doska_flow.py'),run_name='__main__')\" hook",
+            "commandWindows": "python -c \"import os,pathlib,runpy;runpy.run_path(str(pathlib.Path(os.environ.get('CODEX_HOME',str(pathlib.Path.home()/'.codex')))/'skills/doska-workflow/scripts/doska_flow.py'),run_name='__main__')\" hook",
+            "timeout": 3,
+            "statusMessage": "Doska Interrupt"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 -c \"import os,pathlib,runpy;runpy.run_path(str(pathlib.Path(os.environ.get('CODEX_HOME',str(pathlib.Path.home()/'.codex')))/'skills/doska-workflow/scripts/doska_flow.py'),run_name='__main__')\" hook",
+            "commandWindows": "python -c \"import os,pathlib,runpy;runpy.run_path(str(pathlib.Path(os.environ.get('CODEX_HOME',str(pathlib.Path.home()/'.codex')))/'skills/doska-workflow/scripts/doska_flow.py'),run_name='__main__')\" hook",
+            "timeout": 3,
+            "statusMessage": "Doska SessionEnd"
+          }
+        ]
+      }
+    ]
+  }
+}
