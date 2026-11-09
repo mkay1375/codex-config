@@ -16,6 +16,9 @@ def parser():
     p.add_argument('--home',type=Path,help='Isolated Codex home; defaults to CODEX_HOME')
     sub=p.add_subparsers(dest='command',required=True)
     sub.add_parser('doctor',help='Read-only backend health; never creates boards or cards')
+    c=sub.add_parser('brief');c.add_argument('--today');c.add_argument('--format',choices=('json','markdown'),default='markdown')
+    c=sub.add_parser('replay');c.add_argument('--apply',action='store_true')
+    c=sub.add_parser('bind');c.add_argument('task_id');c.add_argument('--confirm',required=True);c.add_argument('--project')
     sub.add_parser('hook',help='Run one lifecycle event from JSON stdin')
     c=sub.add_parser('begin');c.add_argument('task_id');c.add_argument('--session',required=True);c.add_argument('--turn',required=True)
     capture=sub.add_parser('capture')
@@ -50,6 +53,17 @@ def dispatch(args, home):
     if args.command=='hook':
         from .hooks import main as hook_main
         return hook_main(home)
+    if args.command in ('replay','bind'):
+        from .recovery import replay, bind_unassigned
+        state=State(home/'doska-state')
+        try:
+            try:config=load_config(home)
+            except FlowError:
+                if args.command=='bind' or args.apply:raise
+                config=None
+            if args.command=='bind':return bind_unassigned(state,config,args.task_id,args.confirm,args.project)
+            return replay(state,config,args.apply)
+        finally:state.close()
     if args.command=='begin':
         from .hooks import begin
         state=State(home/'doska-state')
@@ -70,7 +84,11 @@ def dispatch(args, home):
                 if args.state=='Done':raise FlowError('Offline completion requires reconnecting and explicit acceptance')
                 if args.state=='Waiting' and (not args.next_action or not args.actor):raise FlowError('Waiting requires next action and actor')
                 request={'task_id':args.task_id,'state':args.state,'summary':args.summary,'verification':args.verification,'next_action':args.next_action,'actor':args.actor,'session':args.session,'activity':'idle' if args.command=='finish' else getattr(args,'activity',None)}
-                if gate['mode']=='offline':state.enqueue(args.task_id,{'operation':'change','request':request})
+                if args.command=='update':
+                    request.update(title=args.title,body=args.body,owner=args.owner,participants=args.participant,acceptance=args.acceptance,deadline=args.deadline,priority=args.priority,reconsider_on=args.reconsider_on)
+                if gate['mode']=='offline':
+                    from .recovery import queue_operation
+                    queue_operation(state,gate,args.task_id,{'operation':'change','request':request})
                 if args.command=='finish':record_outcome(state,args.session,gate['turn_id'],args.task_id)
                 return {'task_id':args.task_id,'mode':gate['mode'],'queued':gate['mode']=='offline'}
         finally:state.close()
@@ -87,6 +105,10 @@ def dispatch(args, home):
     try:
         w=Workflow(config,state)
         op=args.command
+        if op=='brief':
+            from .brief import brief, markdown
+            report=brief(w,args.today)
+            return markdown(report) if args.format=='markdown' else report
         if op=='capture':return w.capture(project_key(Path.cwd(),args.project or config.project_key),args.title,args.body,args.state,args.session,task_id=args.task_id,owner=args.owner,participants=args.participant,acceptance=args.acceptance,reconsider_on=args.reconsider_on)
         if op=='start':return w.start(args.task_id,args.session,args.takeover)
         if op=='attach':return w.attach(args.task_id,args.board,args.session)
@@ -124,7 +146,9 @@ def main(argv=None):
     try:
         result=dispatch(args,args.home or codex_home())
         if args.command=='hook':return result
-        print(json.dumps(result,ensure_ascii=False,indent=2));return 0
+        if args.command=='brief' and args.format=='markdown':print(result,end='')
+        else:print(json.dumps(result,ensure_ascii=False,indent=2))
+        return 2 if isinstance(result,dict) and result.get('blocked') else 0
     except (FlowError,OSError,subprocess.SubprocessError) as exc:
         error={'error':str(exc)}
         if args.command=='capture':error['task_id']=args.task_id

@@ -6,11 +6,13 @@ import shlex
 import sys
 import time
 import uuid
+import subprocess
 from pathlib import Path
 from .config import load_config
 from .model import FlowError, identifier
 from .state import State
 from .transport import Transport
+from .recovery import origin_from_config, queue_operation
 
 CONTROL = re.compile(r'^\[doska:(offline-once|untracked-once) ([a-f0-9]{24})\]\r?\n')
 TASK = re.compile(r'^\[doska:task ([a-f0-9-]{36})\]\r?\n')
@@ -43,7 +45,20 @@ def safe_bridge_command(raw, home):
     if args[:1]==['--home']:
         if len(args)<3 or Path(args[1]).expanduser().resolve()!=Path(home).resolve():return False
         args=args[2:]
-    return bool(args) and args[0] in ('doctor','capture','begin','start','update','finish','complete','info','links','attach','brief','replay')
+    return bool(args) and args[0] in ('doctor','capture','begin','start','update','finish','complete','info','links','attach','brief','replay','bind')
+
+def bounded_probe(home, timeout=3):
+    """Bound all doctor RPCs/DNS together below the synchronous hook timeout."""
+    entry=Path(__file__).resolve().parents[1]/'doska_flow.py'
+    try:
+        result=subprocess.run([sys.executable,str(entry),'--home',str(home),'doctor'],
+                              capture_output=True,text=True,timeout=timeout)
+        if result.returncode:raise FlowError('Doska health check failed; run doctor for details')
+        value=json.loads(result.stdout)
+        if not isinstance(value,dict) or not value.get('reachable'):raise FlowError('Doska health check did not confirm availability')
+        return value
+    except (subprocess.TimeoutExpired,OSError,ValueError):
+        raise FlowError('Doska health check timed out or could not run') from None
 
 def submit(event,home,state,probe=None,now=None):
     now=time.time() if now is None else now
@@ -58,32 +73,37 @@ def submit(event,home,state,probe=None,now=None):
     task_id,normalized=task_prompt(prompt)
     pending=state.get('pending-consent',session)
     mode='online'
+    origin=None
     if control:
         if not pending or pending['challenge']!=control[2] or now>pending['expires'] or pending['fingerprint']!=fingerprint(prompt):
             return block('Doska continuation consent is invalid, expired or for a different task. Retry the original request to obtain a new decision.')
         mode='offline' if control[1]=='offline-once' else 'untracked'
         task_id=pending['task_id']
+        origin=pending.get('origin')
         state.delete('pending-consent',session)
-        state.set('task-consent',session+':'+task_id,{'mode':mode})
+        state.set('task-consent',session+':'+task_id,{'mode':mode,'origin':origin})
     elif task_id:
         consent=state.get('task-consent',session+':'+task_id)
-        if consent:mode=consent['mode']
+        if consent:
+            mode=consent['mode'];origin=consent.get('origin')
     health=None
     if mode=='online':
         try:
             config=load_config(home)
-            health=(probe or (lambda c:Transport(c).connect()))(config)
+            origin=origin_from_config(config)
+            health=probe(config) if probe else bounded_probe(home)
         except (FlowError,OSError) as exc:
-            pending={'challenge':uuid.uuid4().hex[:24],'fingerprint':fingerprint(prompt),'expires':now+TTL,'task_id':task_id or str(uuid.uuid4())}
+            pending={'challenge':uuid.uuid4().hex[:24],'fingerprint':fingerprint(prompt),'expires':now+TTL,'task_id':task_id or str(uuid.uuid4()),'origin':origin}
             state.set('pending-consent',session,pending)
             reply=block('Doska is unavailable: '+str(exc)+'. No task work has started. Fix it and resubmit, or resubmit the SAME request with one first line: [doska:offline-once '+pending['challenge']+'] to queue tracking locally, or [doska:untracked-once '+pending['challenge']+'] to do this task without tracking. This choice expires in ten minutes; silence never permits work.')
             # Do not cache rejected turns: a retry can legitimately re-run preflight.
             return reply
-    gate={'turn_id':turn,'mode':mode,'task_id':task_id,'bound':False,'created':now,'health':health}
+    gate={'turn_id':turn,'mode':mode,'task_id':task_id,'bound':False,'created':now,'health':health,'origin':origin}
     message=('Use $doska-workflow. Tracking mode: '+mode+'. Session '+session+', turn '+turn+'. '
              +'Before task work, call begin with the task UUID and these session/turn IDs. Capture-only requests do not start work. '
              +'Use an existing task only for an actual continuation; capture independent outcomes separately. '
              +'Record a structured finish outcome before the final response. Do not interpret turn completion as task completion.')
+    if origin:message+=' Backend: '+origin['mode']+', workspace '+origin['workspace']+'. Sync verification: '+('configured as verified' if health and health.get('sync')=='user-asserted' else 'unverified; availability does not confirm device synchronization')+'.'
     if task_id:message+=' Required task UUID for this request: '+task_id+'.'
     reply=context(message);gate['reply']=reply;state.set('gate',session,gate)
     return reply
@@ -100,7 +120,7 @@ def begin(home,state,task_id,session,turn,workflow=None):
         workflow.start(task_id,session)
     elif gate['mode']=='offline':
         if not state.get('task',task_id) and not state.get('intent',task_id):raise FlowError('Capture the offline task before beginning')
-        state.enqueue(task_id,{'operation':'change','request':{'task_id':task_id,'state':'Doing','session':session,'activity':'running'}})
+        queue_operation(state,gate,task_id,{'operation':'change','request':{'task_id':task_id,'state':'Doing','session':session,'activity':'running'}})
     gate.update(task_id=task_id,bound=True)
     state.set('gate',session,gate)
     state.set('session',session,{'task_id':task_id,'activity':'running','turn_id':turn,'mode':gate['mode']})
@@ -114,12 +134,14 @@ def record_outcome(state,session,turn,task_id):
 def offline_capture(state,gate,request):
     task_id=gate.get('task_id') or request['task_id']
     if request.get('task_id') not in (None,task_id):raise FlowError('Offline consent belongs to a different task UUID')
-    request={**request,'task_id':task_id}
+    request={'body':'','state':'To do','session':None,'owner':'','participants':[],'acceptance':'','reconsider_on':None,**request,
+             'task_id':task_id,'machine':request.get('machine') or state.machine()}
+    request['participants']=request.get('participants') or []
     if gate['mode']=='offline':
         existing=state.get('intent',task_id)
         if existing and existing!=request:raise FlowError('Offline task UUID belongs to another capture request')
         state.set('intent',task_id,request)
-        state.enqueue(task_id,{'operation':'capture','request':request},'capture:'+task_id)
+        queue_operation(state,gate,task_id,{'operation':'capture','request':request},'capture:'+task_id)
     return {'task_id':task_id,'mode':gate['mode'],'state':request['state'],'queued':gate['mode']=='offline'}
 
 def handle(event,home,probe=None):
@@ -138,7 +160,11 @@ def handle(event,home,probe=None):
             if not gate or gate.get('turn_id')!=turn or not gate.get('bound'):
                 return {'hookSpecificOutput':{'hookEventName':name,'permissionDecision':'deny','permissionDecisionReason':'Doska: register/begin this task after preflight before using work tools. Tracking commands must be a single direct bridge invocation.'}}
             if gate['mode']=='online':
-                try:(probe or (lambda c:Transport(c).connect()))(load_config(home))
+                try:
+                    config=load_config(home)
+                    if origin_from_config(config)!=gate.get('origin'):raise FlowError('Tracking backend changed')
+                    if probe:probe(config)
+                    else:bounded_probe(home)
                 except (FlowError,OSError):
                     gate['bound']=False;state.set('gate',session,gate)
                     return {'hookSpecificOutput':{'hookEventName':name,'permissionDecision':'deny','permissionDecisionReason':'Doska became unavailable. Pause work and ask the user to resubmit with a new preflight/continuation choice.'}}

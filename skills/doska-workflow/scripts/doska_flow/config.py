@@ -41,8 +41,12 @@ class Config:
             raise FlowError('Remote tracking needs an explicit HTTPS MCP endpoint')
         if self.endpoint:
             self.validate_url(self.endpoint)
-        if self.web_url and not self.web_url.startswith('https://'):
-            raise FlowError('web_url must be an authenticated HTTPS web base URL')
+        if self.web_url:
+            u=urlsplit(self.web_url)
+            if u.scheme!='https' or not u.hostname or u.username or u.password or u.query or u.fragment:
+                raise FlowError('web_url must be HTTPS without credentials, query strings, or fragments')
+            try:u.port
+            except ValueError:raise FlowError('Invalid web_url port') from None
 
     def validate_url(self, value):
         u = urlsplit(value)
