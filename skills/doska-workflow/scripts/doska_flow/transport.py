@@ -60,19 +60,49 @@ class Transport:
         try:
             with self.opener.open(req,timeout=self.config.timeout) as res:
                 self.session = res.headers.get('Mcp-Session-Id', self.session)
-                raw = res.read(2*1024*1024+1)
-                if len(raw)>2*1024*1024: raise FlowError('Doska response exceeds the safety limit')
-                if notification: return None
+                if notification:
+                    return None
                 if 'text/event-stream' in res.headers.get('Content-Type',''):
-                    messages = ['\n'.join(line[5:].lstrip() for line in event.splitlines() if line.startswith('data:')) for event in raw.decode().replace('\r\n','\n').split('\n\n')]
-                    objects = [json.loads(m) for m in messages if m]
-                    obj = next((m for m in objects if m.get('id')==data['id']),None)
-                    if obj is None: raise FlowError('Doska did not return the requested response')
-                else: obj = json.loads(raw)
-                if obj.get('error'): raise FlowError('Doska rejected MCP request '+method)
-                return obj.get('result', {})
+                    # A Streamable HTTP SSE response may remain open indefinitely.
+                    # Finish as soon as the matching event arrives, not at EOF.
+                    remaining = 2 * 1024 * 1024
+                    parts = []
+                    obj = None
+                    while remaining > 0:
+                        line = res.readline(remaining + 1)
+                        remaining -= len(line)
+                        if remaining < 0:
+                            raise FlowError('Doska response exceeds the safety limit')
+                        if not line:
+                            break
+                        line = line.decode().rstrip('\r\n')
+                        if line.startswith('data:'):
+                            parts.append(line[5:].lstrip())
+                        elif not line and parts:
+                            event = json.loads('\n'.join(parts))
+                            parts = []
+                            if isinstance(event, dict) and event.get('id') == data['id']:
+                                obj = event
+                                break
+                    if obj is None:
+                        raise FlowError('Doska did not return the requested response')
+                else:
+                    raw = res.read(2 * 1024 * 1024 + 1)
+                    if len(raw) > 2 * 1024 * 1024:
+                        raise FlowError('Doska response exceeds the safety limit')
+                    obj = json.loads(raw)
+                if (not isinstance(obj, dict) or obj.get('jsonrpc') != '2.0'
+                        or isinstance(obj.get('id'), bool) or obj.get('id') != data['id']):
+                    raise FlowError('Doska returned an invalid MCP response identifier')
+                if obj.get('error'):
+                    raise FlowError('Doska rejected MCP request ' + method)
+                if not isinstance(obj.get('result'), dict):
+                    raise FlowError('Doska returned an invalid MCP result')
+                return obj['result']
         except error.HTTPError as exc:
-            raise FlowError(f'Doska HTTP {exc.code}; check authentication and endpoint') from None
+            code = exc.code
+            exc.close()
+            raise FlowError(f'Doska HTTP {code}; check authentication and endpoint') from None
         except (error.URLError, TimeoutError, OSError):
             raise FlowError('Doska is unreachable or timed out') from None
         except (ValueError, UnicodeError, TypeError):

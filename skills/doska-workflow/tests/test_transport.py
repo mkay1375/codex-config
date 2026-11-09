@@ -46,3 +46,42 @@ class TransportTests(unittest.TestCase):
                 state.close()
         finally:server.shutdown();server.server_close();thread.join()
 if __name__=='__main__':unittest.main()
+
+class PersistentSSE(BaseHTTPRequestHandler):
+    protocol_version='HTTP/1.1'
+    released=threading.Event()
+    sent=threading.Event()
+    def log_message(self,*a):pass
+    def do_POST(self):
+        p=json.loads(self.rfile.read(int(self.headers['Content-Length'])))
+        self.send_response(200);self.send_header('Content-Type','text/event-stream');self.end_headers()
+        self.wfile.write(('data: '+json.dumps({'jsonrpc':'2.0','id':p['id'],'result':{'ok':True}})+'\n\n').encode());self.wfile.flush()
+        self.sent.set();self.released.wait(3)
+        self.close_connection=True
+
+class MoreTransportTests(unittest.TestCase):
+    def test_persistent_sse_returns_before_server_closes(self):
+        PersistentSSE.released.clear();PersistentSSE.sent.clear()
+        server=ThreadingHTTPServer(('127.0.0.1',0),PersistentSSE)
+        thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
+        result=[]
+        t=Transport(Config('local','test',endpoint=f'http://127.0.0.1:{server.server_port}/mcp',timeout=2))
+        t.token='test'
+        worker=threading.Thread(target=lambda:result.append(t.rpc('test')),daemon=True)
+        try:
+            worker.start();self.assertTrue(PersistentSSE.sent.wait(1));worker.join(0.5)
+            self.assertFalse(worker.is_alive(),'Client waited for the persistent SSE connection to close')
+            self.assertEqual(result,[{'ok':True}])
+        finally:
+            PersistentSSE.released.set();worker.join(3);server.shutdown();server.server_close();thread.join()
+
+    def test_json_response_identifier_and_shape(self):
+        import io
+        class Response(io.BytesIO):
+            headers={'Content-Type':'application/json'}
+        class Opener:
+            def __init__(self,payload):self.payload=payload
+            def open(self,*a,**kw):return Response(json.dumps(self.payload).encode())
+        for value in [{'jsonrpc':'2.0','id':99,'result':{}},{'jsonrpc':'2.0','id':1,'result':[]},[],{'jsonrpc':'2.0','id':True,'result':{}}]:
+            t=Transport(Config('local','test',endpoint='http://127.0.0.1:3846/mcp'));t.opener=Opener(value)
+            with self.assertRaises(FlowError):t.rpc('test')
