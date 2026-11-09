@@ -27,6 +27,8 @@
 !/skills/prune/**
 !/skills/pause/
 !/skills/pause/**
+!/skills/doska-workflow/
+!/skills/doska-workflow/**
 
 # Synced skills stay local and are never tracked.
 /skills/synced/
