@@ -47,3 +47,11 @@ shell quoting and actual newlines. Use a structured API body or file input when 
 
 Any later commit on the branch, including a base-branch update, makes the PR unreviewed
 again. The `$merge-prs` skill relies on this exact marker to skip PRs already reviewed.
+
+## Optional Doska tracking
+
+Use the `doska-workflow` skill for explicit Doska task requests, or when this
+machine's tracking hooks have been deliberately activated. Merely syncing this
+repository does not activate tracking. Honor the preflight gate and the user's
+choice when Doska is unavailable; never infer permission to continue untracked.
+Capture-for-later requests do not authorize task execution.
