@@ -5,10 +5,11 @@ import re
 import subprocess
 import time
 import uuid
+from functools import wraps
 from pathlib import Path
 from urllib.parse import quote, urlsplit
 from .model import (FlowError, Conflict, STATES, metadata, with_metadata,
-                    validate_state, identifier, iso_date, chat_reference)
+                    validate_state, identifier, iso_date, chat_reference, BEGIN, END)
 from .transport import Transport
 
 ALIASES = {'To do': ('to do','to-do','todo'), 'Doing': ('doing','in progress'),
@@ -44,6 +45,13 @@ def cards(board):
 def digest(value):
     return hashlib.sha256(json.dumps(value,sort_keys=True,ensure_ascii=False).encode()).hexdigest()
 
+def serialized(method):
+    @wraps(method)
+    def run(self, *args, **kwargs):
+        with self.state.operation_lock():
+            return method(self, *args, **kwargs)
+    return run
+
 class Workflow:
     def __init__(self, config, state, transport=None):
         self.config,self.state=config,state
@@ -57,6 +65,7 @@ class Workflow:
         if not self.ready: self.health()
         return self.transport.call(tool,args)
 
+    @serialized
     def board(self, project):
         """Discover by stable marker, not by a machine-local path or a mutable title."""
         key=self.config.workspace+'\n'+project
@@ -112,6 +121,7 @@ class Workflow:
         self.state.set('task',task_id,record)
         return record
 
+    @serialized
     def capture(self, project, title, body='', state='To do', session=None, machine=None,
                 task_id=None, owner='', participants=None, acceptance='', reconsider_on=None):
         validate_state(state)
@@ -149,6 +159,7 @@ class Workflow:
         card,col,meta=found
         return {'record':record,'card':card,'column':col,'metadata':meta}
 
+    @serialized
     def attach(self, task_id, board_id, session=None):
         task_id=identifier(task_id)
         found=self._find(board_id,task_id)
@@ -161,9 +172,15 @@ class Workflow:
         if session:self.state.set('session',session,{'task_id':task_id,'activity':'idle'})
         return record
 
+    @serialized
     def change(self, task_id, state=None, summary=None, next_action=None, actor=None, verification=None,
-               session=None, explicit_done=False, activity=None, reconsider_on=None, event_id=None, takeover=False):
+               session=None, explicit_done=False, activity=None, reconsider_on=None, event_id=None, takeover=False, title=None, body=None, owner=None,
+               participants=None, acceptance=None, deadline=None, priority=None):
         if state is not None:validate_state(state)
+        if title is not None and not title.strip():raise FlowError('Task title must not be empty')
+        if body is not None and (BEGIN in body or END in body):raise FlowError('User notes cannot contain integration metadata markers')
+        if deadline is not None:iso_date(deadline)
+        if priority not in (None,'high','medium','low',''):raise FlowError('Unknown task priority')
         if state=='Done' and not explicit_done:raise FlowError('Done requires explicit acceptance')
         if state=='Waiting' and (not next_action or not actor):raise FlowError('Waiting requires next_action and actor')
         if activity not in (None,'running','idle','interrupted','needs attention'):raise FlowError('Invalid agent activity')
@@ -171,11 +188,12 @@ class Workflow:
         if event_id and event_id in meta.get('applied_events',[]):return record
         if record['metadata_hash']!=digest(meta):raise Conflict('Task metadata changed since the last read; inspect and attach before updating')
         target=record['columns'][state] if state else col['id']
-        if col['id']!=record['column_id'] and col['id']!=target:raise Conflict('Task was manually moved; inspect and attach before updating')
+        if col['id']!=record['column_id'] and (state is None or col['id']!=target):raise Conflict('Task was manually moved; inspect and attach before updating')
         active=meta.get('active_chat')
         if meta.get('activity')=='running' and active and active!=session and not takeover:raise Conflict('Another chat is running this task; explicit takeover required')
         updates={'state':state,'summary':summary,'next_action':next_action,'next_actor':actor,
-                 'verification':verification,'activity':activity,'reconsider_on':iso_date(reconsider_on) if reconsider_on else None}
+                 'verification':verification,'activity':activity,'reconsider_on':iso_date(reconsider_on) if reconsider_on else None,
+                 'owner':owner,'participants':participants,'acceptance':acceptance}
         meta={**meta,**{k:v for k,v in updates.items() if v is not None},'last_update':time.time()}
         if session:
             ref=chat_reference(session,self.state.machine())
@@ -183,11 +201,16 @@ class Workflow:
             meta['active_chat']=session
         if event_id:meta['applied_events']=(meta.get('applied_events',[])+[event_id])[-100:]
         if target!=col['id']:self.call('move_card',{'boardId':record['board_id'],'cardId':card['id'],'columnId':target})
-        body=with_metadata(card.get('body',''),meta)
-        updated=self.call('update_card',{'boardId':record['board_id'],'cardId':card['id'],'body':body})
+        next_body=with_metadata(card.get('body','') if body is None else body,meta)
+        patch={'boardId':record['board_id'],'cardId':card['id'],'body':next_body}
+        if title is not None:patch['title']=title
+        if deadline is not None:patch['deadline']=deadline
+        if priority is not None:patch['priority']=priority or None
+        updated=self.call('update_card',patch)
         board={'id':record['board_id'],'project':record['project'],'columns':record['columns']}
         return self._save(task_id,board,updated,meta,target)
 
+    @serialized
     def start(self, task_id, session, takeover=False):
         result=self.change(task_id,state='Doing',session=session,activity='running',takeover=takeover)
         self.state.set('session',session,{'task_id':task_id,'activity':'running'})

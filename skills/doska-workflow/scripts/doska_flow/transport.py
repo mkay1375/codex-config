@@ -1,6 +1,7 @@
 """Small MCP Streamable HTTP client for Doska; no insecure remote fallbacks."""
 import json
 import os
+import time
 from pathlib import Path
 from urllib import request, error
 from .config import local_settings_path
@@ -57,40 +58,51 @@ class Transport:
         if self.session: headers['Mcp-Session-Id'] = self.session
         if self.initialized: headers['MCP-Protocol-Version'] = '2025-03-26'
         req = request.Request(self.endpoint,data=json.dumps(data).encode(),headers=headers)
+        deadline = time.monotonic() + self.config.timeout
         try:
             with self.opener.open(req,timeout=self.config.timeout) as res:
                 self.session = res.headers.get('Mcp-Session-Id', self.session)
                 if notification:
                     return None
-                if 'text/event-stream' in res.headers.get('Content-Type',''):
-                    # A Streamable HTTP SSE response may remain open indefinitely.
-                    # Finish as soon as the matching event arrives, not at EOF.
-                    remaining = 2 * 1024 * 1024
-                    parts = []
-                    obj = None
-                    while remaining > 0:
-                        line = res.readline(remaining + 1)
-                        remaining -= len(line)
-                        if remaining < 0:
-                            raise FlowError('Doska response exceeds the safety limit')
-                        if not line:
-                            break
-                        line = line.decode().rstrip('\r\n')
-                        if line.startswith('data:'):
-                            parts.append(line[5:].lstrip())
-                        elif not line and parts:
-                            event = json.loads('\n'.join(parts))
-                            parts = []
+                streaming = 'text/event-stream' in res.headers.get('Content-Type','')
+                remaining = 2 * 1024 * 1024
+                buffer = b''
+                obj = None
+                while remaining > 0:
+                    budget = deadline - time.monotonic()
+                    if budget <= 0:
+                        raise FlowError('Doska response timed out')
+                    socket = getattr(getattr(getattr(res, 'fp', None), 'raw', None), '_sock', None)
+                    if socket is not None:
+                        socket.settimeout(budget)
+                    # read1 returns after at most one underlying read. readline/read
+                    # can otherwise wait forever while a peer trickles a long line.
+                    chunk = res.read1(min(65536, remaining + 1))
+                    remaining -= len(chunk)
+                    if remaining < 0:
+                        raise FlowError('Doska response exceeds the safety limit')
+                    if not chunk:
+                        break
+                    buffer += chunk
+                    if streaming:
+                        buffer = buffer.replace(b'\r\n', b'\n')
+                        while b'\n\n' in buffer:
+                            event_bytes, buffer = buffer.split(b'\n\n', 1)
+                            parts = [line[5:].lstrip() for line in event_bytes.split(b'\n') if line.startswith(b'data:')]
+                            if not parts:
+                                continue
+                            event = json.loads(b'\n'.join(parts))
                             if isinstance(event, dict) and event.get('id') == data['id']:
                                 obj = event
                                 break
-                    if obj is None:
-                        raise FlowError('Doska did not return the requested response')
-                else:
-                    raw = res.read(2 * 1024 * 1024 + 1)
-                    if len(raw) > 2 * 1024 * 1024:
+                        if obj is not None:
+                            break
+                if obj is None and streaming:
+                    raise FlowError('Doska did not return the requested response')
+                if not streaming:
+                    if remaining <= 0:
                         raise FlowError('Doska response exceeds the safety limit')
-                    obj = json.loads(raw)
+                    obj = json.loads(buffer)
                 if (not isinstance(obj, dict) or obj.get('jsonrpc') != '2.0'
                         or isinstance(obj.get('id'), bool) or obj.get('id') != data['id']):
                     raise FlowError('Doska returned an invalid MCP response identifier')
@@ -109,12 +121,17 @@ class Transport:
             raise FlowError('Doska returned an invalid MCP response') from None
 
     def connect(self):
+        self.session = None
+        self.initialized = False
         self.credentials()
         result = self.rpc('initialize', {'protocolVersion':'2025-03-26','capabilities':{},'clientInfo':{'name':'doska-workflow','version':'1.0'}})
         if result.get('protocolVersion') != '2025-03-26': raise FlowError('Unsupported MCP protocol version')
         self.initialized = True
         self.rpc('notifications/initialized',notification=True)
-        names = {t['name'] for t in self.rpc('tools/list',{}).get('tools',[])}
+        tools = self.rpc('tools/list',{}).get('tools')
+        if not isinstance(tools, list) or any(not isinstance(t, dict) or not isinstance(t.get('name'), str) for t in tools):
+            raise FlowError('Doska returned an invalid tool list')
+        names = {t['name'] for t in tools}
         if REQUIRED_TOOLS - names: raise FlowError('Doska is missing required task tools: '+', '.join(sorted(REQUIRED_TOOLS-names)))
         self.call('list_boards', {})
         return {'reachable':True,'server':result.get('serverInfo',{}),'mode':self.config.mode,
@@ -124,6 +141,9 @@ class Transport:
         result = self.rpc('tools/call', {'name':tool,'arguments':arguments})
         if result.get('isError'): raise FlowError('Doska tool failed: '+tool)
         if 'structuredContent' in result: return result['structuredContent']
-        text = '\n'.join(item.get('text','') for item in result.get('content',[]) if item.get('type')=='text')
+        content = result.get('content')
+        if not isinstance(content, list) or any(not isinstance(item, dict) or (item.get('type') == 'text' and not isinstance(item.get('text'), str)) for item in content):
+            raise FlowError('Doska returned invalid tool content: ' + tool)
+        text = '\n'.join(item['text'] for item in content if item.get('type')=='text')
         try: return json.loads(text)
         except ValueError: raise FlowError('Doska returned invalid tool content: '+tool) from None

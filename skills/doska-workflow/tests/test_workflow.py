@@ -73,3 +73,25 @@ class WorkflowTests(unittest.TestCase):
         r=self.w.capture('p','Task')
         with self.assertRaises(FlowError):self.w.change(r['task_id'],state='Waiting')
 if __name__=='__main__':unittest.main()
+
+class CorrectnessTests(WorkflowTests):
+    def test_manual_move_rejected_for_summary_only_update(self):
+        r=self.w.capture('p','Task')
+        self.backend.call('move_card',{'boardId':r['board_id'],'cardId':r['card_id'],'columnId':r['columns']['Procrastinated']})
+        with self.assertRaises(Conflict):self.w.change(r['task_id'],summary='stale state')
+    def test_edit_fields_preserves_integration(self):
+        r=self.w.capture('p','Old','Old notes')
+        result=self.w.change(r['task_id'],title='New',body='New human notes',owner='A',participants=['B'],acceptance='Pass tests',deadline='2027-01-01',priority='high')
+        item=self.w.info(r['task_id'])
+        self.assertEqual(item['card']['title'],'New');self.assertTrue(item['card']['body'].startswith('New human notes'))
+        self.assertEqual(item['metadata']['owner'],'A');self.assertEqual(item['metadata']['participants'],['B'])
+        with self.assertRaises(FlowError):self.w.change(r['task_id'],body=with_metadata('',{'schema':1}))
+    def test_operation_lock_is_reentrant_and_bounds_other_instances(self):
+        other=State(self.state.root)
+        try:
+            with self.state.operation_lock():
+                with self.state.operation_lock():
+                    with self.assertRaises(FlowError):
+                        with other.operation_lock(timeout=0.05):pass
+            with other.operation_lock(timeout=0.05):pass
+        finally:other.close()

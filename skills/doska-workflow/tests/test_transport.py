@@ -85,3 +85,35 @@ class MoreTransportTests(unittest.TestCase):
         for value in [{'jsonrpc':'2.0','id':99,'result':{}},{'jsonrpc':'2.0','id':1,'result':[]},[],{'jsonrpc':'2.0','id':True,'result':{}}]:
             t=Transport(Config('local','test',endpoint='http://127.0.0.1:3846/mcp'));t.opener=Opener(value)
             with self.assertRaises(FlowError):t.rpc('test')
+
+class HeartbeatSSE(BaseHTTPRequestHandler):
+    def log_message(self,*a):pass
+    def do_POST(self):
+        self.rfile.read(int(self.headers['Content-Length']))
+        self.send_response(200);self.send_header('Content-Type','text/event-stream');self.end_headers()
+        import time
+        try:
+            for _ in range(40):self.wfile.write(b': heartbeat\n\n');self.wfile.flush();time.sleep(0.02)
+        except (BrokenPipeError,ConnectionResetError):pass
+
+class DeadlineTests(unittest.TestCase):
+    def test_heartbeat_stream_has_total_deadline(self):
+        import time
+        server=ThreadingHTTPServer(('127.0.0.1',0),HeartbeatSSE);thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
+        t=Transport(Config('local','test',endpoint=f'http://127.0.0.1:{server.server_port}/mcp',timeout=0.12));t.token='test'
+        try:
+            start=time.monotonic()
+            with self.assertRaises(FlowError):t.rpc('test')
+            self.assertLess(time.monotonic()-start,0.5)
+        finally:server.shutdown();server.server_close();thread.join()
+    def test_reconnect_starts_new_session_and_malformed_tools_rejected(self):
+        class TestTransport(Transport):
+            def credentials(self):pass
+            def rpc(self,method,params=None,notification=False):
+                if method=='initialize':
+                    self.initial_state=(self.session,self.initialized)
+                    return {'protocolVersion':'2025-03-26'}
+                if method=='tools/list':return {'tools':[None]}
+        t=TestTransport(Config('local','test'));t.session='old';t.initialized=True
+        with self.assertRaises(FlowError):t.connect()
+        self.assertEqual(t.initial_state,(None,False))

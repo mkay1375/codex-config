@@ -4,6 +4,8 @@ import os
 import sqlite3
 import time
 import uuid
+import threading
+from contextlib import contextmanager
 from pathlib import Path
 from .config import codex_home
 from .model import FlowError
@@ -18,10 +20,57 @@ class State:
         fd = os.open(self.path, os.O_CREAT | os.O_RDWR, 0o600)
         os.close(fd)
         if os.name != 'nt': self.path.chmod(0o600)
+        self._mutex = threading.RLock()
+        self._lock_depth = 0
         self.db = sqlite3.connect(self.path, timeout=10)
         self.db.execute('CREATE TABLE IF NOT EXISTS kv (namespace TEXT, key TEXT, value TEXT, PRIMARY KEY(namespace,key))')
         self.db.execute('CREATE TABLE IF NOT EXISTS events (id TEXT PRIMARY KEY, task TEXT, payload TEXT, created REAL, status TEXT)')
         self.db.commit()
+
+    @contextmanager
+    def operation_lock(self, timeout=10):
+        """Serialize multi-request mutations across processes on this computer."""
+        if not self._mutex.acquire(timeout=timeout):
+            raise FlowError('Another local task operation is still running')
+        handle = None
+        try:
+            if self._lock_depth == 0:
+                path = self.root / 'operation.lock'
+                fd = os.open(path, os.O_CREAT | os.O_RDWR, 0o600)
+                handle = os.fdopen(fd, 'r+b')
+                if handle.seek(0, 2) == 0:
+                    handle.write(b'0'); handle.flush()
+                deadline = time.monotonic() + timeout
+                while True:
+                    try:
+                        handle.seek(0)
+                        if os.name == 'nt':
+                            import msvcrt
+                            msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+                        else:
+                            import fcntl
+                            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                        break
+                    except OSError:
+                        if time.monotonic() >= deadline:
+                            raise FlowError('Another local task operation is still running') from None
+                        time.sleep(0.05)
+            self._lock_depth += 1
+            try:
+                yield
+            finally:
+                self._lock_depth -= 1
+                if handle is not None:
+                    handle.seek(0)
+                    if os.name == 'nt':
+                        import msvcrt
+                        msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+                    else:
+                        import fcntl
+                        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        finally:
+            if handle is not None: handle.close()
+            self._mutex.release()
 
     def get(self, namespace, key, default=None):
         row = self.db.execute('SELECT value FROM kv WHERE namespace=? AND key=?',(namespace,key)).fetchone()
