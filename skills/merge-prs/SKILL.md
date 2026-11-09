@@ -1,12 +1,12 @@
 ---
 name: merge-prs
-description: Review and squash-merge selected GitHub PRs or GitLab MRs, including self-hosted, in order. Reuse current-head review evidence from descriptions or comments, review overlaps, fix critical issues in isolated worktrees, and wait for CI.
+description: Review and squash-merge selected GitHub PRs or GitLab MRs, including self-hosted, in order. Reuse current-head review evidence from descriptions or comments, review overlaps, resolve merge conflicts, fix critical issues and failing tests in isolated worktrees, and wait for CI.
 ---
 
 Read PR/MR numbers from the user's request and preserve their order. With no numbers, select
 the user's open, non-draft requests, oldest first. Explicitly invoking this skill authorizes
-pushing critical fixes to the selected branches and merging those requests; do not ask again
-before merging. It does not authorize deleting leftover local worktrees or local branches.
+resolving conflicts, pushing critical fixes and test repairs to the selected branches, and
+merging those requests; do not ask again before merging. It does not authorize deleting leftover local worktrees or local branches.
 
 ## Git server
 
@@ -50,9 +50,10 @@ Read the description before deciding whether another review is needed. It can co
 review evidence as well as the request's intent, validation and known limitations. On GitLab,
 fetch `description`, `sha`, changed files and all MR notes with the corresponding fields.
 
-Skip closed requests, drafts, merge conflicts, changes requested and requests already labelled
-`reviewing`. If mergeability is still being computed, refresh it before deciding; report
-unresolved state rather than assuming the request is mergeable.
+Skip closed requests, drafts, changes requested and requests already labelled `reviewing`.
+Keep requests with merge conflicts eligible: resolve them in step 3 before review. If
+mergeability is still being computed, refresh it before deciding; report unresolved state
+rather than assuming the request is mergeable.
 
 Ensure a `reviewing` label exists without overwriting its existing metadata. Recheck the
 request before adding it with `gh pr edit <n> --add-label reviewing`. This label is an advisory
@@ -61,8 +62,10 @@ run added, and release it in step 5 even if the run fails or is interrupted.
 
 ## 2. Decide which requests need review
 
-A request needs review if either condition holds:
+A request needs review if any condition holds:
 
+- **Merge conflicts.** The server reports conflicts, or integrating the fetched base reveals
+  them. Resolve them in step 3 and review the resulting head even if the old head had a marker.
 - **No review at its current head.** Accept either a comment's exact first line or an exact
   standalone line in the request description: `Reviewed at <current head SHA>`. The description
   marker must start the body or follow a blank line, outside quotes, code and HTML blocks.
@@ -96,7 +99,7 @@ A request needs review if either condition holds:
   `gh api "repos/{owner}/{repo}/compare/<headRefOid>...<baseRefName>" --jq '.files[].filename'`.
   Paginate or use a local Git diff if the API truncates the file list.
 
-Record review reasons and overlapping files. Requests needing neither condition proceed to
+Record review reasons and overlapping files. Requests meeting none of these conditions proceed to
 step 4, where their head and review status must still be rechecked. A matching description or
 comment does not override overlap: review combined behavior whenever files may clash.
 
@@ -116,8 +119,12 @@ the same worktrees sequentially yourself.
 Each worker must:
 
 1. Read the request description and repository instructions. If the request clashes with its
-   base, merge the fetched base into the request branch before reviewing. If that conflicts,
-   stop and report it as blocking.
+   base, merge the fetched base into the request branch before reviewing. Resolve any conflicts
+   using the request intent, both branches' changes, repository conventions and existing tests.
+   Preserve the intended behavior of both branches; do not blindly choose one side. Stage the
+   resolved files and complete the merge. Stop for a conflict only when resolution requires a
+   design decision that the available evidence cannot settle; report the conflicting choices.
+   Review the completed resolution and verify it through the checks below.
 2. Run Codex's built-in review against the fetched base. From the worktree, use
    `codex review -c model_reasoning_effort='"high"' --base origin/<baseRefName>` when the CLI is
    available, or the host's built-in review capability with the same scope. Adjust the remote
@@ -130,8 +137,13 @@ Each worker must:
    failing builds or tests, and integration breaks between overlapping requests. Do not make
    style-only or simplification changes. If a fix needs a design decision, report it as blocking.
 5. Run repository-required checks. Use `make format`, `make check`, `make test` only when those
-   targets exist and are the repository's prescribed checks. Fix failures caused by the changes;
-   report unrelated failures. Verify the final diff, including fixes and any base merge.
+   targets exist and are the repository's prescribed checks. Fix build and test failures,
+   including those introduced by conflict resolution or integration with the base, then rerun
+   the affected checks. Repair unrelated test failures too when the intended behavior is clear,
+   and report them separately. Do not weaken assertions or disable checks to obtain a pass.
+   Stop for a test repair only when it requires a design decision that the available evidence
+   cannot settle. Review resulting fixes and verify the final diff, including the resolution
+   and any base merge, before committing and pushing.
 6. Commit needed changes and push to the request's actual head branch. Never force-push. If
    pushing to a fork is unauthorized or rejected, stop that request and report it as blocking.
 7. Unless anything is blocking, fetch the remote request head again. It must equal the reviewed
@@ -146,18 +158,24 @@ Each worker must:
 
 For each request in the chosen order:
 
-1. Inspect worker fixes and their final diff. Skip incorrect or excessive fixes, blocking issues
-   and failed checks. Refresh request state and current remote head.
+1. Inspect worker fixes and their final diff. Correct incorrect or excessive fixes and route
+   build or test failures back through step 3; continue once reviewed and verified. Skip requests
+   with remaining blockers. Refresh request state and current remote head.
 2. If it is now behind its base, update it using `gh pr update-branch <n>` or the GitLab equivalent.
-   A conflict blocks the request. Any update that changes its head invalidates the review marker:
-   repeat review and verification at that head, including overlaps with requests already merged.
+   If conflicts are reported, fetch the current head and base into its isolated worktree and
+   resolve them through step 3, then commit and push. Create the worktree if review was previously
+   skipped. Any update that changes its head invalidates the review marker: repeat review and
+   verification at that head, including overlaps with requests already merged, then continue.
 3. Re-read the description and comments and confirm exact review evidence exists for the
    current head using the same helper. If another commit appeared,
    repeat review at that head before merging. Stop and report repeated concurrent changes rather
    than chasing a moving branch indefinitely.
 4. Wait for required CI using `gh pr checks <n> --watch` or GitLab pipeline status. Observe waits
-   through bounded polls and keep the user informed. Skip failed or unresolved required checks;
-   report when no checks are configured.
+   through bounded polls and keep the user informed. If CI reports build or test failures,
+   inspect the logs and repair them through step 3, commit and push, repeat review at the new
+   head, and wait for CI again. Continue merging once review and required checks pass; a conflict
+   or test failure alone is not a reason to skip the request. Report checks blocked by external
+   infrastructure or permissions without bypassing them, and report when no checks are configured.
 5. Refresh the head again and merge only the SHA whose review and CI passed:
    `gh pr merge <n> --squash --match-head-commit <reviewed-head>` on GitHub, or
    `glab mr merge <n> --squash --auto-merge=false --sha <reviewed-head> --yes` on GitLab. If branch protection
@@ -175,7 +193,7 @@ exit too. Report any release that failed so it does not silently hide a request 
 
 ## 6. Report
 
-Give a table: request | review this run (already reviewed / unreviewed / overlap) | critical
+Give a table: request | review this run (already reviewed / unreviewed / overlap / conflicts) | critical
 issues | fixes | merged or skipped, with reason. Include checks and unresolved claims where
 relevant. Distinguish confirmed merges from queued or failed attempts.
 
