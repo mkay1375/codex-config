@@ -25,6 +25,8 @@
 !/skills/remove-python-dead-code/**
 !/skills/prune/
 !/skills/prune/**
+!/skills/pause/
+!/skills/pause/**
 
 # Synced skills stay local and are never tracked.
 /skills/synced/
