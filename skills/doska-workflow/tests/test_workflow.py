@@ -86,6 +86,13 @@ class CorrectnessTests(WorkflowTests):
         self.assertEqual(item['card']['title'],'New');self.assertTrue(item['card']['body'].startswith('New human notes'))
         self.assertEqual(item['metadata']['owner'],'A');self.assertEqual(item['metadata']['participants'],['B'])
         with self.assertRaises(FlowError):self.w.change(r['task_id'],body=with_metadata('',{'schema':1}))
+    def test_local_links_include_navigation_ids(self):
+        r=self.w.capture('p','Task')
+        links=self.w.links(r['task_id'])
+        self.assertEqual(links['board_id'],r['board_id'])
+        self.assertEqual(links['card_id'],r['card_id'])
+        self.assertIsNone(links['web_url'])
+
     def test_operation_lock_is_reentrant_and_bounds_other_instances(self):
         other=State(self.state.root)
         try:

@@ -223,5 +223,5 @@ class Workflow:
     def links(self, task_id):
         record=self.state.get('task',identifier(task_id))
         if not record:raise FlowError('Unknown task UUID')
-        return {'task_id':task_id,'web_url':self.config.web_url.rstrip('/')+'/d/'+quote(record['board_id'],safe='')+'/c/'+quote(record['card_id'],safe='') if self.config.web_url else None,
+        return {'task_id':task_id,'board_id':record['board_id'],'card_id':record['card_id'],'web_url':self.config.web_url.rstrip('/')+'/d/'+quote(record['board_id'],safe='')+'/c/'+quote(record['card_id'],safe='') if self.config.web_url else None,
                 'chats':record.get('metadata',{}).get('chats',[])}
