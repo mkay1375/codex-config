@@ -102,3 +102,17 @@ class CorrectnessTests(WorkflowTests):
                         with other.operation_lock(timeout=0.05):pass
             with other.operation_lock(timeout=0.05):pass
         finally:other.close()
+
+
+class AttachStateTests(WorkflowTests):
+    def test_attach_adopts_manual_defer_and_completion(self):
+        for target in ('Procrastinated', 'Done'):
+            with self.subTest(target=target):
+                r=self.w.capture('p','Manual move '+target,'Human notes')
+                self.backend.call('move_card',{'boardId':r['board_id'],'cardId':r['card_id'],'columnId':r['columns'][target]})
+                self.assertEqual(self.w.info(r['task_id'])['state'],target)
+                self.w.attach(r['task_id'],r['board_id'])
+                result=self.w.change(r['task_id'],summary='Keep manual decision')
+                self.assertEqual(result['metadata']['state'],target)
+                self.assertEqual(result['metadata']['activity'],'idle')
+                self.assertTrue(self.w.info(r['task_id'])['card']['body'].startswith('Human notes'))

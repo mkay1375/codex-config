@@ -157,7 +157,9 @@ class Workflow:
         found=self._find(record['board_id'],task_id)
         if not found:raise Conflict('Task card was deleted or is unavailable; not recreating it')
         card,col,meta=found
-        return {'record':record,'card':card,'column':col,'metadata':meta}
+        states=[name for name, column in record['columns'].items() if column==col['id']]
+        if len(states)!=1:raise Conflict('Task is in an unmapped column; resolve workflow columns before continuing')
+        return {'record':record,'card':card,'column':col,'metadata':meta,'state':states[0]}
 
     @serialized
     def attach(self, task_id, board_id, session=None):
@@ -168,6 +170,14 @@ class Workflow:
         if meta.get('workspace')!=self.config.workspace:raise Conflict('Task belongs to a different workspace')
         board=self.board(meta['project'])
         if board['id']!=board_id:raise Conflict('Board is not canonical for this project')
+        states=[name for name, column in board['columns'].items() if column==col['id']]
+        if len(states)!=1:raise Conflict('Task is in an unmapped column; choose a workflow column before attaching')
+        # Explicit attach adopts the user's current board position, including a
+        # manual deferral or completion. Preserve notes and reconcile metadata.
+        if meta.get('state')!=states[0]:
+            meta={**meta,'state':states[0],'last_update':time.time()}
+            if states[0] in ('Procrastinated','Done'):meta['activity']='idle'
+            card=self.call('update_card',{'boardId':board_id,'cardId':card['id'],'body':with_metadata(card.get('body',''),meta)})
         record=self._save(task_id,board,card,meta,col['id'])
         if session:self.state.set('session',session,{'task_id':task_id,'activity':'idle'})
         return record
