@@ -23,3 +23,26 @@ class Contracts(unittest.TestCase):
         self.assertEqual(chat_reference('thr_123','pc')['uri'], 'codex://threads/thr_123')
         with self.assertRaises(FlowError): chat_reference('x?bad', 'pc')
 if __name__ == '__main__': unittest.main()
+
+
+class ReadableSummaryTests(unittest.TestCase):
+    def test_summary_updates_preserve_notes_and_keep_json_below_cut(self):
+        value={'schema':1,'kind':'task','state':'Review','owner':'Alice','activity':'idle','summary':'Tests passed','next_action':'Review PR','next_actor':'Me'}
+        body=with_metadata('Human notes\nKeep exactly.',value)+'\nHuman footer'
+        preview=body.split('-cut-',1)[0]
+        self.assertIn('**State:** Review',preview)
+        self.assertIn('**Latest:** Tests passed',preview)
+        self.assertIn('**Next:** Me — Review PR',preview)
+        self.assertNotIn('```json',preview)
+        changed=with_metadata(body,{**value,'summary':'Updated result'})
+        self.assertEqual(metadata(changed)['summary'],'Updated result')
+        self.assertIn('Human notes\nKeep exactly.',changed)
+        self.assertTrue(changed.endswith('\nHuman footer'))
+        self.assertEqual(changed.count(SUMMARY_BEGIN),1)
+        self.assertNotIn('Tests passed',changed)
+        self.assertEqual(with_metadata(changed,metadata(changed)),changed)
+    def test_summary_cannot_inject_preview_cut_or_markdown_link(self):
+        body=with_metadata('',{'schema':1,'kind':'task','state':'Doing','summary':'Hi\n-cut-\n[x](https://example.com)'})
+        preview=body.split('\n-cut-\n',1)[0]
+        self.assertNotIn('[x](',preview)
+        self.assertEqual(body.count('\n-cut-\n'),1)

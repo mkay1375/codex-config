@@ -83,7 +83,7 @@ class CorrectnessTests(WorkflowTests):
         r=self.w.capture('p','Old','Old notes')
         result=self.w.change(r['task_id'],title='New',body='New human notes',owner='A',participants=['B'],acceptance='Pass tests',deadline='2027-01-01',priority='high')
         item=self.w.info(r['task_id'])
-        self.assertEqual(item['card']['title'],'New');self.assertTrue(item['card']['body'].startswith('New human notes'))
+        self.assertEqual(item['card']['title'],'New');self.assertIn('New human notes',item['card']['body'])
         self.assertEqual(item['metadata']['owner'],'A');self.assertEqual(item['metadata']['participants'],['B'])
         with self.assertRaises(FlowError):self.w.change(r['task_id'],body=with_metadata('',{'schema':1}))
     def test_local_links_include_navigation_ids(self):
@@ -115,4 +115,4 @@ class AttachStateTests(WorkflowTests):
                 result=self.w.change(r['task_id'],summary='Keep manual decision')
                 self.assertEqual(result['metadata']['state'],target)
                 self.assertEqual(result['metadata']['activity'],'idle')
-                self.assertTrue(self.w.info(r['task_id'])['card']['body'].startswith('Human notes'))
+                self.assertIn('Human notes',self.w.info(r['task_id'])['card']['body'])
