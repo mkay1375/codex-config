@@ -47,3 +47,6 @@ shell quoting and actual newlines. Use a structured API body or file input when 
 
 Any later commit on the branch, including a base-branch update, makes the PR unreviewed
 again. The `$merge-prs` skill relies on this exact marker to skip PRs already reviewed.
+
+If RTK.md exists in the same directory as this AGENTS.md,
+read it and follow its instructions. Otherwise, skip it.
