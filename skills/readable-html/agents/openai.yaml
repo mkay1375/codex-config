@@ -1,0 +1,4 @@
+interface:
+  display_name: "Readable HTML"
+  short_description: "Create a portable, paginated HTML book reader"
+  default_prompt: "Use $readable-html to turn this text into a self-contained HTML reader with meaningful pages and a table of contents."
