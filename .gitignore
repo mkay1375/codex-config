@@ -42,6 +42,3 @@ __pycache__/
 .pytest_cache/
 .venv/
 node_modules/
-
-# RTK instructions are machine-local.
-/[Rr][Tt][Kk].md
