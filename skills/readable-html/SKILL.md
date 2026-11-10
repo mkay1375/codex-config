@@ -43,7 +43,7 @@ Preserve these template behaviors:
 - Right-to-left or left-to-right reading; Vazir embedded for Persian.
 - Warm yellow paper in light mode and muted yellow/olive in dark mode. Default to the system appearance, respond to live system changes, and allow manual light/dark/system selection.
 - Full-width mobile text; desktop contents rail; reachable bottom previous/next, copy, ChatGPT, bookmark, contents, and settings controls. Icon buttons retain accessible names.
-- Current page out of the **whole document**, including chapter transitions. Previous/next must cross chapter boundaries correctly.
+- Current page out of the **whole document**, including chapter transitions. Previous/next must cross chapter boundaries correctly. Clicking the page counter opens a jump-to-page dialog; accept Persian, Arabic, and Latin digits, validate the whole-document range, and preserve Back-to-close behavior.
 - Save location, scroll offset, typography, theme, and bookmarks locally. Opening settings or contents adds a history entry, so browser/Android Back first closes the panel. Closing it manually must consume that entry as well.
 - ChatGPT receives selected text inside the reading area, otherwise the current page, with title/chapter context. Open a prepared prompt; do not send messages automatically or add an API key. For long prompts, copy the text and open ChatGPT with a clear paste instruction. Report clipboard/popup failure truthfully. Shift-click copies the prompt only.
 
