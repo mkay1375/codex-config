@@ -13,6 +13,13 @@ UI in your final response whenever possible. Capture the relevant
 screens or states so the changes are easy to review. If screenshots
 cannot be provided, briefly explain why.
 
+## Persian HTML typography
+
+When creating an HTML file with Persian text, use Vazirmatn for that
+text when feasible, with a sans-serif fallback. Reuse an existing font
+asset when available. If the file needs to work offline, use a local
+or embedded font so it can render without a network connection.
+
 ## Large tasks
 
 When a task is too big to do well in one pass, split it into parts and work through them:
