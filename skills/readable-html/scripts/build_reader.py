@@ -21,7 +21,18 @@ def paragraphs(value, label):
     if not isinstance(value, list) or not value:
         raise ValueError(f'{label} must be a nonempty paragraph array')
     for i, item in enumerate(value):
-        nonempty(item, f'{label}[{i}]')
+        location = f'{label}[{i}]'
+        if not isinstance(item, dict):
+            nonempty(item, location)
+            continue
+        if not item.keys() <= {'code', 'language'}:
+            raise ValueError(f'{location} code block accepts only code and language')
+        nonempty(item.get('code'), f'{location}.code')
+        if 'language' in item and (
+            not isinstance(item['language'], str)
+            or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9+#._-]{0,31}', item['language'])
+        ):
+            raise ValueError(f'{location}.language must be a short language tag')
 
 
 def validate_document(raw, number):

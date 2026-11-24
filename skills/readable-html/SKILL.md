@@ -9,9 +9,9 @@ Deliver one portable `.html` file based on [assets/reader-template.html](assets/
 
 ## Prepare the text
 
-- Use the supplied text or extract it with an available format-appropriate tool. For an existing reader HTML, extract its source data, not navigation labels or duplicated rendered pages. Do not invent missing passages or silently drop footnotes, tables, code, or appendices. Represent these as plain-text blocks when the reader cannot preserve their original layout; explain material limitations.
+- Use the supplied text or extract it with an available format-appropriate tool. For an existing reader HTML, extract its source data, not navigation labels or duplicated rendered pages. Do not invent missing passages or silently drop footnotes, tables, code, or appendices. Use structured code blocks for code and preserve tables as text when needed. Explain material layout limitations.
 - Preserve wording, punctuation, and order. This task authorizes pagination, not rewriting or summarization. Only repair extraction artifacts or normalize spacing when requested. Read large inputs programmatically in full rather than reconstructing them from truncated tool output.
-- Identify the language and direction explicitly. Use Persian Vazir for Persian; the template includes both font weights and the license. English uses a serif reading face; other languages can use suitable installed/system fallback fonts. If a particular script requires an embedded font, use an appropriately licensed font and include its license. Preserve mixed-script names, numbers, and quotes.
+- Identify the language and direction explicitly. Use Persian Vazir for Persian; the template includes both font weights and the license. The template embeds Literata for English prose, including Latin text within Persian passages. Other scripts can use suitable installed/system fallback fonts. If a particular script requires an embedded font, use an appropriately licensed font and include its license. Preserve mixed-script names, numbers, and quotes.
 - Build a table of contents from genuine chapter or section headings, retaining the source hierarchy in titles where necessary. Do not turn arbitrary first sentences into chapter names. For unstructured text, use `text` or `paragraphs` without `chapters`; chapter navigation is then hidden while search and bookmarks remain available.
 
 Read [references/content-schema.md](references/content-schema.md) when preparing structured JSON or setting explicit page breaks.
@@ -44,6 +44,7 @@ Preserve these template behaviors:
 - Warm yellow paper in light mode and muted yellow/olive in dark mode. Default to the system appearance, respond to live system changes, and allow manual light/dark/system selection.
 - Full-width mobile text; desktop contents rail; reachable bottom previous/next, copy, ChatGPT, bookmark, contents, and settings controls. Icon buttons retain accessible names.
 - Current page out of the **whole document**, including chapter transitions. Previous/next must cross chapter boundaries correctly. Clicking the page counter opens a jump-to-page dialog; accept Persian, Arabic, and Latin digits, validate the whole-document range, and preserve Back-to-close behavior.
+- Default to 16 px text and code with 1.6 line spacing. Keep saved preferences. Display code left-to-right with preserved whitespace, horizontal scrolling, and a code-only copy control.
 - Save location, scroll offset, typography, theme, and bookmarks locally. Opening settings or contents adds a history entry, so browser/Android Back first closes the panel. Closing it manually must consume that entry as well.
 - ChatGPT receives selected text inside the reading area, otherwise the current page, with title/chapter context. Open a prepared prompt; do not send messages automatically or add an API key. For long prompts, copy the text and open ChatGPT with a clear paste instruction. Report clipboard/popup failure truthfully. Shift-click copies the prompt only.
 
@@ -54,6 +55,6 @@ Run the helper on representative input and open the generated artifact in a brow
 - Every source passage appears exactly once, in order, and every TOC item lands on its proper first page. Inspect around chapter transitions and manually curated boundaries.
 - At mobile width (~390 px, also check 320 px) and desktop width, no horizontal overflow or unreachable controls. Check one RTL and one LTR input if language behavior changed.
 - Previous/next, total page count, search, bookmarks, reload/resume, light/dark/system mode, and panel Back/close behavior work. Reading and embedded fonts work with the network off. ChatGPT can be tested by capturing the intended URL without contacting the service.
-- A source string containing `</script>` remains literal text and cannot execute code. There are no runtime errors or unintended network dependencies.
+- Verify code indentation, scrolling, copying and search when using code blocks. A source string containing `</script>` remains literal text in prose and code and cannot execute. There are no runtime errors or unintended network dependencies.
 
 Return a link to the final HTML and screenshots when possible. Mention meaningful extraction or pagination limitations. Keep intermediate JSON, scripts, and screenshots out of the deliverable folder unless requested. Do not require publishing, a server, installation, or account sign-in to read the result.
