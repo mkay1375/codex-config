@@ -1,6 +1,6 @@
 # Codex Config
 
-Personal Codex instructions and skills for frontend design, repository cleanup, Python dead-code removal, behavior-preserving code pruning, PR merging, rephrasing, and summarizing.
+Personal Codex instructions and skills for frontend design, repository cleanup, behavior-preserving code pruning, and PR merging.
 
 ## Installation and syncing
 

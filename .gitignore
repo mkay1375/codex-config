@@ -15,14 +15,8 @@
 !/skills/cleanup/**
 !/skills/merge-prs/
 !/skills/merge-prs/**
-!/skills/rephrase/
-!/skills/rephrase/**
-!/skills/summarize/
-!/skills/summarize/**
 !/skills/e2e-worktree/
 !/skills/e2e-worktree/**
-!/skills/remove-python-dead-code/
-!/skills/remove-python-dead-code/**
 !/skills/prune/
 !/skills/prune/**
 !/skills/pause/

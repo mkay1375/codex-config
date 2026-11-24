@@ -1,6 +1,6 @@
 ---
 name: prune
-description: Reduce maintained lines of code while preserving supported behavior, performance, and readability. Use for code pruning, shrinking implementations, and removing unnecessary complexity; not for feature removal or syntax compression.
+description: Reduce maintained lines of code while preserving supported behavior, performance, and readability. Use for code pruning, shrinking implementations, and dead-code audits or removal, including in Python.
 ---
 
 # Prune
@@ -33,6 +33,10 @@ Similar-looking code can encode different business rules. Do not combine it sole
 Before deleting apparently unused code, inspect callers, configuration, exports, dynamic registration, reflection, framework hooks, serialization, and external entry points as applicable. Absence from a text search alone does not establish that code is unused. Leave uncertain candidates unchanged.
 
 Avoid opportunistic redesign, feature changes, dependency upgrades, and unrelated cleanup. Prefer focused, independently verifiable reductions.
+
+For Python dead code, trace each candidate through its callers to supported entry points. Search reexports, dependency injection, test-only paths, and dynamic framework registration before treating an unused-looking chain as removable. Check ORM metadata, migrations, and SQL before deleting model definitions. Use AST analysis or existing static-analysis tools to find candidates and confirm their reachability separately. After a deletion, check for callers, imports, and wiring that it orphaned.
+
+For an audit-only request, keep it read-only and report each finding with its location, caller evidence, and any uncertainty.
 
 ## Verify each retained change
 
