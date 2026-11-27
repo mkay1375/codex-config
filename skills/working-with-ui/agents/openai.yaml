@@ -1,0 +1,4 @@
+interface:
+  display_name: "Working with UI"
+  short_description: "UI screenshots and Persian HTML typography"
+  default_prompt: "Use $working-with-ui when updating this interface, including screenshots and Persian typography where relevant."

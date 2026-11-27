@@ -1,9 +1,9 @@
 ---
-name: e2e-worktree
+name: do-e2e
 description: Explicitly invoked workflow to complete a coding task in a new Git worktree, commit all task changes, review and fix critical issues, push the branch, and deliver a GitHub PR or GitLab MR link.
 ---
 
-# E2E Worktree
+# Do E2E
 
 Use only when explicitly invoked. Take the accompanying task through implementation and
 deliver a reviewable PR. Invocation authorizes creating a worktree and branch, committing
@@ -104,6 +104,7 @@ On GitHub, write the two lines to a temporary file and use
 `glab api -X POST "projects/:id/merge_requests/<n>/notes" -f body=<text>` with proper shell
 quoting and actual newlines, or use a structured API body/file input when supported.
 
+The `$merge-prs` skill relies on this exact marker to skip PRs already reviewed.
 Any later commit, including a base update, invalidates the marker. If the remote head differs,
 review and verify the actual updated branch before posting a new marker. Stop and report
 repeated concurrent changes instead of certifying a moving head or overwriting others' work.
