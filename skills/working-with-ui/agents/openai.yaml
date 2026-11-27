@@ -1,0 +1,4 @@
+interface:
+  display_name: "Working with UI"
+  short_description: "System-default themes, screenshots, Persian typography"
+  default_prompt: "Use $working-with-ui when updating this interface, including light and dark modes with System as the default, screenshots, and Persian typography where relevant."

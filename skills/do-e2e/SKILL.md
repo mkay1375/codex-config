@@ -1,9 +1,9 @@
 ---
-name: e2e-worktree
+name: do-e2e
 description: Explicitly invoked workflow to complete a coding task in a new Git worktree, commit all task changes, review and fix critical issues, push the branch, and deliver a GitHub PR or GitLab MR link.
 ---
 
-# E2E Worktree
+# Do E2E
 
 Use only when explicitly invoked. Take the accompanying task through implementation and
 deliver a reviewable PR. Invocation authorizes creating a worktree and branch, committing
@@ -36,8 +36,8 @@ be identified from the conversation and workspace, ask for the missing informati
 ## 2. Implement and commit everything for the task
 
 Complete the requested behavior and repository-required checks. For large tasks, follow
-applicable AGENTS.md delegation and commit requirements: run each part in a subagent and
-commit it before starting dependent parts. Give each agent an explicit worktree path;
+the [Large Tasks skill](../large-tasks/SKILL.md) for delegation and commit sequencing.
+Give each agent an explicit worktree path;
 use separate worktrees if edits could overlap, then integrate their commits into the task
 branch before reviewing the whole change.
 
@@ -104,6 +104,7 @@ On GitHub, write the two lines to a temporary file and use
 `glab api -X POST "projects/:id/merge_requests/<n>/notes" -f body=<text>` with proper shell
 quoting and actual newlines, or use a structured API body/file input when supported.
 
+The `$merge-prs` skill relies on this exact marker to skip PRs already reviewed.
 Any later commit, including a base update, invalidates the marker. If the remote head differs,
 review and verify the actual updated branch before posting a new marker. Stop and report
 repeated concurrent changes instead of certifying a moving head or overwriting others' work.

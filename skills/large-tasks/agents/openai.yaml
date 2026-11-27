@@ -1,0 +1,4 @@
+interface:
+  display_name: "Large Tasks"
+  short_description: "Split large coding tasks into committed subagent parts"
+  default_prompt: "Use $large-tasks to split this work into subagent parts, commit each part, and review the integrated change."
