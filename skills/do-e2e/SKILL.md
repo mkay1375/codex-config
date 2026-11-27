@@ -36,8 +36,8 @@ be identified from the conversation and workspace, ask for the missing informati
 ## 2. Implement and commit everything for the task
 
 Complete the requested behavior and repository-required checks. For large tasks, follow
-applicable AGENTS.md delegation and commit requirements: run each part in a subagent and
-commit it before starting dependent parts. Give each agent an explicit worktree path;
+the [Large Tasks skill](../large-tasks/SKILL.md) for delegation and commit sequencing.
+Give each agent an explicit worktree path;
 use separate worktrees if edits could overlap, then integrate their commits into the task
 branch before reviewing the whole change.
 
