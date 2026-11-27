@@ -5,6 +5,19 @@ description: Break coding tasks that are too large to complete well in one pass 
 
 # Large Tasks
 
+## Choose where to work
+
+Before starting, check the current Git branch and identify the repository's main
+branch (`main`, or its configured primary branch). If currently on that branch
+and the user has not already chosen where to work, ask whether to do this job
+on the current branch or in a new branch and worktree. Wait for their answer
+before editing files, launching implementation subagents, or committing changes.
+Follow their choice; do not create a branch or worktree before they choose it.
+An existing instruction to use a new branch and worktree, including invocation
+of Do E2E, already supplies that choice; do not ask again.
+
+## Split and complete the work
+
 When a task is too big to do well in one pass, split it into parts and work through them:
 
 1. Run each part in a subagent.
