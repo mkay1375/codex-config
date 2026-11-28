@@ -256,6 +256,28 @@ class Review(unittest.TestCase):
             app.update_review('APP-02','Stale edit.',True,1,'High')
         self.assertEqual(self.review('APP-02')['selected_severity'],'Low')
 
+    def test_unclosed_fence_cannot_corrupt_other_selections(self):
+        app.update_review('APP-02','Keep this issue.',True,0)
+        before=app.EXPORT.read_text()
+        with self.assertRaisesRegex(ValueError,'Close the fenced'):
+            app.update_review('APP-01','Unfinished example:\n```python\nprint(1)',True,0)
+        self.assertEqual(app.EXPORT.read_text(),before)
+        app.update_review('APP-01','Unfinished example:\n```python\nprint(1)',False,0)
+        self.assertFalse(self.review()['approved'])
+        doc=app.selection_document()
+        with self.assertRaises(ValueError):
+            app.save_selection(doc['content']+'\n```python\n',doc['revision'])
+        self.assertEqual(app.EXPORT.read_text(),before)
+
+    def test_new_issue_is_inserted_before_independent_notes(self):
+        app.update_review('APP-01','Initial draft.',True,0)
+        doc=app.selection_document()
+        app.save_selection(doc['content']+'\n## Personal notes\n\n### Low\n\nNotes stay here.\n',doc['revision'])
+        app.update_review('APP-02','Another draft.',True,0,'Low')
+        content=app.EXPORT.read_text()
+        self.assertLess(content.index('#### APP-02'),content.index('## Personal notes'))
+        self.assertIn('Notes stay here.',content)
+
     def test_processed_persists_independently_of_selection(self):
         app.set_processed('APP-01', True)
         self.assertTrue(self.review()['processed'])

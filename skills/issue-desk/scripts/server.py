@@ -139,8 +139,23 @@ def issue_projects():
     return {issue['project'] for issue in ISSUES.values()}
 
 
+def validate_fences(text):
+    fence = None
+    for line in text.splitlines():
+        match = re.match(r'^ {0,3}(`{3,}|~{3,})(.*)$',line)
+        if match:
+            run, tail = match.groups()
+            if fence is None:
+                fence=run
+            elif run[0] == fence[0] and len(run) >= len(fence) and not tail.strip():
+                fence=None
+    if fence:
+        raise ValueError('Close the fenced code block before approving or saving the selected file. You can still save an unfinished draft.')
+
+
 def selection_sections(content):
     """Recognize issue headings outside fenced code; leave all other Markdown intact."""
+    validate_fences(content)
     headings, endings, fence, offset = [], {}, None, 0
     for line in content.splitlines(keepends=True):
         marker = re.match(r'^ {0,3}(`{3,}|~{3,})(.*)$', line.rstrip('\r\n'))
@@ -225,7 +240,7 @@ def edit_selection(content, ident, draft, severity=None):
     if not group:
         return content.rstrip() + f'\n\n## {project}\n\n### {severity}\n\n' + block
     project_end = next((h[0] for h in headings if h[0] > group[0] and
-                        (h[2] == 1 or (h[2] == 2 and h[3] in issue_projects()))), len(content))
+                        h[2] <= 2), len(content))
     severity_groups = [h for h in headings if group[0] < h[0] < project_end and h[2] == 3 and h[3] in SEVERITY]
     severity_group = next((h for h in severity_groups if h[3] == severity), None)
     if severity_group:
@@ -282,6 +297,7 @@ def save_selection(content, revision):
 def validate_draft(ident, draft):
     if not isinstance(draft, str) or not draft.strip():
         raise ValueError('Write or generate a draft before approving it. Markdown is welcome.')
+    validate_fences(draft)
 
 
 def update_review(ident, draft, approve, version, severity=None):

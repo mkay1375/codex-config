@@ -2,10 +2,11 @@
 const $ = (s, root = document) => root.querySelector(s);
 let data, active, project = '', tab = 'finding', pending = null, dirty = false;
 const questionBuffers = new Map();
+let editorIssue=null, editorVersion=null;
 const names = {};
 const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const reviewStatus = i => i.review.approved && !i.review.stale ? 'selected' : i.review.draft ? 'draft' : 'unreviewed';
-function notice(message, error = false) { const n = $('#notice'); n.textContent = message; n.hidden = !message; n.setAttribute('role', error ? 'alert' : 'status'); }
+function notice(message, error = false) { const n = $('#notice'); if(!error){n.hidden=true;n.textContent='';return;} n.textContent = message; n.hidden = !message; n.setAttribute('role', error ? 'alert' : 'status'); }
 async function api(url, body) {
   const response = await fetch(url, body ? {method:'POST', headers:{'Content-Type':'application/json','X-Review-Token':data.token},body:JSON.stringify(body)} : {});
   const result = await response.json();
@@ -62,6 +63,7 @@ function setTab(value) {
 }
 function drawDetail() {
   const i = current(); if (!i) return;
+  if(!dirty || editorIssue!==active){editorIssue=active;editorVersion=i.review.version;}
   const unsavedSeverity = dirty && $('#selection-severity') ? $('#selection-severity').value : null;
   const unsaved = dirty && $('#draft-text') ? $('#draft-text').value : null;
   $('#detail').replaceChildren($('#detail-template').content.cloneNode(true));
@@ -132,9 +134,9 @@ async function saveReview(approved, initialDraft=null, initialSeverity=null) {
   const submittedDraft=$('#draft-text').value, submittedSeverity=$('#selection-severity').value;
   localFeedback(feedback,'Saving…');
   try {
-    const review = await api('/api/review',{id:i.id,draft:submittedDraft,approved,version:i.review.version,severity:submittedSeverity});
+    const review = await api('/api/review',{id:i.id,draft:submittedDraft,approved,version:editorVersion,severity:submittedSeverity});
     i.review = review;
-    if(active===i.id){dirty=$('#draft-text').value!==submittedDraft || $('#selection-severity').value!==submittedSeverity;drawDetail();}
+    if(active===i.id){editorVersion=review.version;dirty=$('#draft-text').value!==submittedDraft || $('#selection-severity').value!==submittedSeverity;drawDetail();}
     drawNav();drawList();
     if(active===i.id)localFeedback(feedback,approved?'Approved and added to selected-issues.md.':'Draft saved; this issue is not selected.');
     notice(approved ? `${i.id} approved and saved to selected-issues.md.` : `${i.id} saved as a draft. It is not in the selected file.`);
