@@ -27,6 +27,8 @@
 !/skills/pause/**
 !/skills/readable-html/
 !/skills/readable-html/**
+!/skills/issue-desk/
+!/skills/issue-desk/**
 
 # Synced skills stay local and are never tracked.
 /skills/synced/

@@ -30,3 +30,7 @@ git clone --depth 1 --filter=blob:none --sparse https://github.com/anthropics/sk
 If the commands succeed, replace the copied upstream commit and its link above with the printed SHA. Preserve the upstream license and supporting files. Review `git diff` and `git status --short`, then commit and push the skill files and README together. You can then remove the temporary directory with `rm -rf "$upstream_dir"`.
 
 Other machines checked out at `~/.codex` receive the updated skill with a normal `git pull --ff-only`.
+
+## Issue Desk skill
+
+[`skills/issue-desk/`](skills/issue-desk/) provides a local audit-review app: browse findings, discuss them with Codex, prepare short English drafts, choose selection severity, and curate one editable Markdown file grouped by project and severity. Processed status is tracked separately. Runtime data stays in the chosen report workspace. See the skill for startup and report-format requirements.
