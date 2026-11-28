@@ -1,6 +1,7 @@
 'use strict';
 const $ = (s, root = document) => root.querySelector(s);
 let data, active, project = '', tab = 'finding', pending = null, dirty = false;
+const questionBuffers = new Map();
 const names = {};
 const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const reviewStatus = i => i.review.approved && !i.review.stale ? 'selected' : i.review.draft ? 'draft' : 'unreviewed';
@@ -36,6 +37,7 @@ function markdown(text) {
   flush(); if (code !== null) output.push(`<pre><code>${esc(code.join('\n'))}</code></pre>`);
   return output.join('');
 }
+function chatDirection(text) { return /[\u0600-\u06ff]/.test(text)?'rtl':'ltr'; }
 function current() {return data.issues.find(i => i.id === active);}
 function localFeedback(selector, message, error=false) { const el=$(selector);el.textContent=message;el.hidden=!message;el.classList.toggle('error',error);el.setAttribute('role',error?'alert':'status');if(message)el.scrollIntoView({block:'nearest'}); }
 function mayLeave() {return !dirty || window.confirm('You have unsaved English edits. Discard those edits?');}
@@ -71,9 +73,15 @@ function drawDetail() {
   $('.source-link').textContent = i.evidence_label; $('.source-link').onclick = async () => {try {await navigator.clipboard.writeText(`${i.evidence_path}:${i.evidence_line}`);notice('Source location copied.');}catch {notice(`Source: ${i.evidence_path}:${i.evidence_line}`);}};
   $('.report-name').textContent = i.report;
   $('.report-body').innerHTML = markdown(i.body);
+  $('#finding-severity').value=i.review.selected_severity || i.severity;
+  $('#finding-severity').onchange=()=>{$('#selection-severity').value=$('#finding-severity').value;$('#selection-severity').dispatchEvent(new Event('change'));};
+  $('#add-finding').textContent=reviewStatus(i)==='selected'?'Update selected':'Add to selected';
+  $('#add-finding').onclick=()=>saveReview(true,$('#draft-text').value.trim()?$('#draft-text').value:i.body,$('#finding-severity').value);
+  $('#copy-finding').onclick=async()=>{try{await navigator.clipboard.writeText(`### ${i.id} — ${i.title}\n\n${i.body}`);localFeedback('#finding-feedback','Finding copied as Markdown.');}catch{localFeedback('#finding-feedback','Could not copy. Allow clipboard access and retry.',true);}};
+
   $('.chat-count').textContent = i.review.messages.length ? `(${i.review.messages.length})` : '';
   $('.draft-dot').textContent = reviewStatus(i)==='selected' ? '✓' : i.review.draft ? '•' : '';
-  $('.messages').innerHTML = i.review.messages.length ? i.review.messages.map((m, index) => `<div class="message ${m.role}" dir="auto"><div class="message-header"><div class="message-label">${m.role==='user'?'You':'Codex'}</div>${m.role==='assistant'?`<button type="button" class="copy-response" data-copy-message="${index}" aria-label="Copy response ${index + 1} as Markdown">Copy Markdown</button>`:''}</div><div class="prose">${markdown(m.content)}</div></div>`).join('') : '<p class="help">No discussion yet. Start with a question above or write your own.</p>';
+  $('.messages').innerHTML = i.review.messages.length ? i.review.messages.map((m, index) => `<div class="message ${m.role}" dir="${chatDirection(m.content)}"><div class="message-header"><div class="message-label">${m.role==='user'?'You':'Codex'}</div>${m.role==='assistant'?`<button type="button" class="copy-response" data-copy-message="${index}" aria-label="Copy response ${index + 1} as Markdown">Copy Markdown</button>`:''}</div><div class="prose" dir="${chatDirection(m.content)}">${markdown(m.content)}</div></div>`).join('') : '<p class="help">No discussion yet. Start with a question above or write your own.</p>';
   document.querySelectorAll('[data-copy-message]').forEach(button => {
     button.onclick = async () => {
       try {
@@ -87,7 +95,8 @@ function drawDetail() {
     };
   });
   $('#selection-severity').value=unsavedSeverity || i.review.selected_severity || i.severity;
-  $('#selection-severity').onchange=()=>{dirty=true;$('.draft-status').textContent='Unsaved severity change';$('#approve').disabled=false;$('#approve').textContent='Approve & add to selected';};
+  $('#finding-severity').value=$('#selection-severity').value;
+  $('#selection-severity').onchange=()=>{$('#finding-severity').value=$('#selection-severity').value;dirty=true;$('.draft-status').textContent='Unsaved severity change';$('#approve').disabled=false;$('#approve').textContent='Approve & add to selected';};
   $('#draft-text').value = unsaved !== null ? unsaved : i.review.draft;
   $('#draft-text').oninput = () => {localFeedback('#review-feedback','');dirty = true; $('.draft-status').textContent = 'Unsaved edits'; $('#approve').textContent = 'Approve & add to selected'; $('#approve').disabled = false;};
   $('.stale-warning').hidden = !i.review.stale;
@@ -100,6 +109,8 @@ function drawDetail() {
   });
   document.querySelectorAll('.generate-draft').forEach(b => b.onclick = () => startJob('draft'));
   document.querySelectorAll('[data-question]').forEach(b => b.onclick = () => {$('#question').value = b.dataset.question; $('#question').focus();});
+  $('#question').value=questionBuffers.get(i.id)||'';
+  $('#question').oninput=()=>questionBuffers.set(i.id,$('#question').value);
   $('#ask-form').onsubmit = e => {e.preventDefault(); startJob('ask', $('#question').value);};
   $('#save-draft').onclick = () => saveReview(false);
   $('#approve').onclick = () => saveReview(true);
@@ -113,18 +124,21 @@ function updateBusy() {
   if (isHere) $('.job-label').textContent = pending.kind==='draft' ? 'Codex is preparing the English draft. You can browse other findings.' : 'Codex is reading the finding and your question…';
   document.querySelectorAll('.generate-draft, #ask-button').forEach(b => b.disabled = !!pending || !data.codex);
 }
-async function saveReview(approved) {
-  const i = current(); const buttons = [...document.querySelectorAll('#save-draft,#approve,#remove')]; buttons.forEach(b => b.disabled=true);
+async function saveReview(approved, initialDraft=null, initialSeverity=null) {
+  if(initialDraft!==null)$('#draft-text').value=initialDraft;
+  if(initialSeverity!==null)$('#selection-severity').value=initialSeverity;
+  const feedback=tab==='finding'?'#finding-feedback':'#review-feedback';
+  const i = current(); const buttons = [...document.querySelectorAll('#save-draft,#approve,#remove,#add-finding')]; buttons.forEach(b => b.disabled=true);
   const submittedDraft=$('#draft-text').value, submittedSeverity=$('#selection-severity').value;
-  localFeedback('#review-feedback','Saving…');
+  localFeedback(feedback,'Saving…');
   try {
     const review = await api('/api/review',{id:i.id,draft:submittedDraft,approved,version:i.review.version,severity:submittedSeverity});
     i.review = review;
     if(active===i.id){dirty=$('#draft-text').value!==submittedDraft || $('#selection-severity').value!==submittedSeverity;drawDetail();}
     drawNav();drawList();
-    if(active===i.id)localFeedback('#review-feedback',approved?'Approved and added to selected-issues.md.':'Draft saved; this issue is not selected.');
+    if(active===i.id)localFeedback(feedback,approved?'Approved and added to selected-issues.md.':'Draft saved; this issue is not selected.');
     notice(approved ? `${i.id} approved and saved to selected-issues.md.` : `${i.id} saved as a draft. It is not in the selected file.`);
-  } catch(e) {if(active===i.id)localFeedback('#review-feedback',e.message,true);notice(e.message,true); buttons.forEach(b => b.disabled=false);}
+  } catch(e) {if(active===i.id)localFeedback(feedback,e.message,true);notice(e.message,true); buttons.forEach(b => b.disabled=false);}
 }
 async function startJob(kind, question='') {
   if (kind==='draft' && !mayLeave()) return;
@@ -133,7 +147,7 @@ async function startJob(kind, question='') {
   try {
     const result = await api('/api/ask',{id:i.id,kind,question,version:i.review.version});
     pending = {id:i.id,kind,job:result.job}; localStorage.setItem('issue-desk-job', JSON.stringify(pending));
-    if (kind==='ask') {i.review.messages.push({role:'user',content:question}); $('#question').value='';}
+    if (kind==='ask') {i.review.messages.push({role:'user',content:question}); if((questionBuffers.get(i.id)||'')===question){questionBuffers.delete(i.id);if(active===i.id)$('#question').value='';}}
     notice(''); drawDetail(); poll();
   } catch(e) {notice(e.message,true);}
 }
@@ -204,7 +218,7 @@ const theme = localStorage.getItem('issue-desk-theme') || 'system'; $('#theme').
 function applyTheme(value) {if(value==='system') delete document.documentElement.dataset.theme;else document.documentElement.dataset.theme=value;localStorage.setItem('issue-desk-theme',value);}
 applyTheme(theme); $('#theme').onchange=e=>applyTheme(e.target.value);
 ['search','severity','status'].forEach(id => $(`#${id}`).addEventListener(id==='search'?'input':'change',drawList));
-window.addEventListener('beforeunload',e=>{if(dirty || selectionDirty){e.preventDefault();e.returnValue='';}});
+window.addEventListener('beforeunload',e=>{if(dirty || selectionDirty || [...questionBuffers.values()].some(value=>value.trim())){e.preventDefault();e.returnValue='';}});
 (async () => {
   try {
     data=await api('/api/issues');active=data.issues.some(i=>i.id===location.hash.slice(1))?location.hash.slice(1):data.issues[0]?.id;

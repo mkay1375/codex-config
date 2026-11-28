@@ -32,6 +32,23 @@ JOBS = {}
 SEVERITY = {'Critical': 0, 'High': 1, 'Medium': 2, 'Low': 3}
 
 
+def report_detail_body(body):
+    fence = None
+    result = []
+    for line in body.splitlines():
+        marker = re.match(r'^ {0,3}(`{3,}|~{3,})(.*)$',line)
+        if marker:
+            run, tail = marker.groups()
+            if fence is None:
+                fence = run
+            elif run[0] == fence[0] and len(run) >= len(fence) and not tail.strip():
+                fence = None
+        elif fence is None and line.startswith('## '):
+            break
+        result.append(line)
+    return '\n'.join(result).strip()
+
+
 def load_reports(root=None):
     root = (root or ROOT).resolve()
     issues, projects = {}, []
@@ -47,12 +64,23 @@ def load_reports(root=None):
             end = anchors[index + 1].start() if index + 1 < len(anchors) else len(text)
             body = text[match.end():end].strip()
             # Verification/remediation sections after the last finding are report-level.
-            body = re.split(r'\n## ', body, maxsplit=1)[0].strip()
+            body = report_detail_body(body)
             details[match[2]] = body
         count = 0
+        in_table = False
         for line in text.splitlines():
-            if not re.match(r'^\| \[[A-Z][A-Z0-9-]*-\d+\]\(#', line):
+            if line.strip() == '| ID | Severity | Area | Finding | Evidence anchor |':
+                in_table = True
                 continue
+            if not in_table:
+                continue
+            if not line.startswith('|'):
+                in_table = False
+                continue
+            if re.fullmatch(r'[| :\-]+',line):
+                continue
+            if not re.match(r'^\| \[[A-Z][A-Z0-9-]*-\d+\]\(#', line):
+                raise ValueError(f'Unsupported findings row in {path.name}: expected a linked issue ID.')
             cells = [x.strip() for x in line.strip('|').split('|')]
             if len(cells) != 5:
                 raise ValueError(f'Unexpected table row in {path.name}')
@@ -130,6 +158,14 @@ def selection_sections(content):
             if heading:
                 headings.append((offset, offset + len(line), len(heading[1]), heading[2]))
         offset += len(line)
+    spans = []
+    for start, body_start, level, title in headings:
+        ident = re.match(r'^([A-Z][A-Z0-9-]*-\d+)(?:\s|$)', title)
+        if level in (3,4) and ident:
+            ending = next((e for e in endings.get(ident[1], []) if e[0] >= body_start), None)
+            if ending:
+                spans.append((body_start, ending[0]))
+    headings = [h for h in headings if not any(a <= h[0] < b for a,b in spans)]
     sections = {}
     for index, (start, body_start, level, title) in enumerate(headings):
         ident = re.match(r'^([A-Z][A-Z0-9-]*-\d+)(?:\s|$)', title)
@@ -159,9 +195,11 @@ def sync_selection(conn):
     for ident, issue in ISSUES.items():
         row, section = rows.get(ident), sections.get(ident)
         if section and section['body']:
+            pref = conn.execute('SELECT severity FROM selection_severity WHERE id=?',(ident,)).fetchone()
+            severity_changed = bool(pref and section['severity'] and pref['severity'] != section['severity'])
             if section['severity']:
                 conn.execute('INSERT INTO selection_severity VALUES (?,?) ON CONFLICT(id) DO UPDATE SET severity=excluded.severity', (ident, section['severity']))
-            if not row or not row['approved'] or row['reserved'] != section['body']:
+            if not row or not row['approved'] or row['reserved'] != section['body'] or severity_changed:
                 conn.execute('INSERT INTO reviews VALUES (?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET draft=excluded.draft, approved=1, version=excluded.version, fingerprint=excluded.fingerprint, reserved=excluded.reserved',
                              (ident, section['body'], 1, (row['version'] if row else 0) + 1, issue['fingerprint'], section['body']))
         elif row and row['approved']:

@@ -32,3 +32,4 @@ main{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain}
 }
 html{height:100dvh;overflow:hidden}
 body{position:fixed;inset:0;height:100dvh;overflow:hidden}
+.finding-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:24px;font-size:12px}.prose[dir=rtl]{text-align:right}.prose[dir=rtl] code{direction:ltr;unicode-bidi:isolate}.prose pre{direction:ltr;text-align:left}.message-header{direction:ltr}

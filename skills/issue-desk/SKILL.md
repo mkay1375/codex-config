@@ -23,6 +23,7 @@ The app stores conversations, drafts, severity choices and processed flags in `<
 
 ## Review workflow
 
+- **Finding** includes Copy Markdown and Add to selected (using the current draft when present, otherwise the finding body), with an export severity chooser. Persian chat messages render right-to-left; code blocks stay left-to-right.
 - Browse projects and findings; search and filter severity or review status.
 - Discuss a finding using the installed, signed-in `codex` CLI. This is a separate invocation with the finding and recent discussion, not the current desktop chat. Copy Markdown from each response.
 - Generate an English draft with exactly two lines: `Problem: ...` and `Solution: ...`. Drafts omit ID and severity. Preserve material conditions rather than making unsupported certainty claims.

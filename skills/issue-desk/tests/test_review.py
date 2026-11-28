@@ -43,6 +43,22 @@ class Reports(unittest.TestCase):
             self.assertEqual(len(projects),1)
             self.assertEqual(issues['DEMO-01']['evidence_path'],'demo.py')
             self.assertEqual(issues['DEMO-01']['body'],'Evidence and remediation.')
+    def test_mixed_unsupported_table_row_is_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)
+            (root/'demo-audit-report-2026-01-01.md').write_text(
+                '| ID | Severity | Area | Finding | Evidence anchor |\n'
+                '|---|---|---|---|---|\n'
+                '| [DEMO-01](#demo-01) | High | Testing | Demo issue | [demo.py:1](demo.py:1) |\n'
+                '| DEMO-02 | Critical | Testing | Another issue | [demo.py:2](demo.py:2) |\n\n'
+                '<a id="demo-01"></a>\n\n### DEMO-01 — Demo issue\n\nEvidence and remediation.\n')
+            with self.assertRaisesRegex(ValueError,'Unsupported findings row'):
+                app.load_reports(root)
+
+    def test_code_fence_retained_and_report_tail_omitted(self):
+        body='Example:\n```md\n## example heading\n```\n\nImportant remediation.\n\n## Verification\nDone.'
+        self.assertEqual(app.report_detail_body(body),'Example:\n```md\n## example heading\n```\n\nImportant remediation.')
+
 
 
 class Review(unittest.TestCase):
@@ -222,6 +238,23 @@ class Review(unittest.TestCase):
         app.update_review('APP-02','Revised draft.',True,self.review('APP-02')['version'])
         self.assertIn('Old source finding.',app.EXPORT.read_text())
         self.assertIn('Keep my notes.',app.EXPORT.read_text())
+
+    def test_custom_severity_heading_stays_inside_its_issue(self):
+        app.update_review('APP-01','Problem text.\n\n### High\n\nCustom heading.',True,0)
+        app.update_review('APP-02','Second draft.',True,0)
+        app.update_review('APP-01','Keep draft.',False,1)
+        with app.connect() as conn:
+            app.sync_selection(conn)
+        self.assertEqual(self.review('APP-02')['selected_severity'],'High')
+        self.assertIn('### High\n\n#### APP-02',app.EXPORT.read_text())
+
+    def test_manual_severity_edit_invalidates_stale_approval(self):
+        app.update_review('APP-02','Second draft.',True,0)
+        doc=app.selection_document()
+        app.save_selection(doc['content'].replace('### High','### Low'),doc['revision'])
+        with self.assertRaises(ValueError):
+            app.update_review('APP-02','Stale edit.',True,1,'High')
+        self.assertEqual(self.review('APP-02')['selected_severity'],'Low')
 
     def test_processed_persists_independently_of_selection(self):
         app.set_processed('APP-01', True)
