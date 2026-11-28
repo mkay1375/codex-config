@@ -27,7 +27,7 @@ function markdown(text) {
     if(marker && code===null){flush();fence=marker[1];code=[];continue;}
     if(marker && code!==null && marker[1][0]===fence[0] && marker[1].length>=fence.length && !marker[2].trim()){output.push(`<pre><code>${esc(code.join('\n'))}</code></pre>`);code=null;fence=null;continue;}
     if (code !== null) {code.push(line); continue;}
-    if (/^<!-- Managed by issue-review\./.test(line)) continue;
+    if (/^<!-- (?:Managed by issue-review\.|issue-desk:end )/.test(line)) continue;
     if (!line.trim()) {flush(); continue;}
     if (/^#{1,6}\s/.test(line)) {flush(); const level=Math.min(line.match(/^#+/)[0].length,6);output.push(`<h${level}>${inline(line.replace(/^#+\s/, ''))}</h${level}>`); continue;}
     if (/^\s*(?:[-*]|\d+\.)\s/.test(line)) { if (para.length) flush(); if (!list) {output.push('<ul>');list = true;} output.push(`<li>${inline(line.replace(/^\s*(?:[-*]|\d+\.)\s/, ''))}</li>`); continue; }
@@ -43,13 +43,13 @@ function drawNav() {
   const selected = data.issues.filter(i => reviewStatus(i) === 'selected').length;
   $('#total-selected').textContent = selected;
   $('#all-progress').textContent = `${selected} of ${data.issues.length} findings selected`;
-  $('#projects').innerHTML = [{id:'',count:data.issues.length},...data.projects].map(p => `<button class="project ${project===p.id?'active':''}" data-project="${esc(p.id)}" ${project===p.id?'aria-current="page"':''}><span>${esc(names[p.id] || 'All projects')}</span><span>${p.count}</span></button>`).join('');
+  $('#projects').innerHTML = [{id:'',count:data.issues.length},...data.projects].map(p => `<button class="project ${project===p.id?'active':''}" data-project="${esc(p.id)}" ${project===p.id?'aria-current="page"':''}><span>${esc(names[p.id] || p.id || 'All projects')}</span><span>${p.count}</span></button>`).join('');
   $('#projects').querySelectorAll('button').forEach(b => b.onclick = () => {project = b.dataset.project; drawNav(); drawList();});
 }
 function drawList() {
   const query = $('#search').value.trim().toLowerCase(), severity = $('#severity').value, status = $('#status').value;
   const filtered = data.issues.filter(i => (!project || i.project === project) && (!severity || i.severity === severity) && (!status || (status==='processed' ? i.review.processed : status==='unprocessed' ? !i.review.processed : reviewStatus(i) === status)) && (!query || `${i.id} ${i.title} ${i.area} ${i.body}`.toLowerCase().includes(query)));
-  $('#project-title').textContent = names[project] || 'All projects'; $('#list-count').textContent = `${filtered.length} findings`;
+  $('#project-title').textContent = names[project] || project || 'All projects'; $('#list-count').textContent = `${filtered.length} findings`;
   $('#findings').innerHTML = filtered.length ? filtered.map(i => `<button class="finding ${active===i.id?'active':''}" data-id="${i.id}" ${active===i.id?'aria-current="true"':''}><span class="finding-top"><span class="badge ${i.severity.toLowerCase()}">${i.severity}</span><span class="finding-id">${i.id}</span><span class="review-indicator">${[reviewStatus(i)==='selected'?'✓ Selected':reviewStatus(i)==='draft'?'Draft':'', i.review.processed?'Processed':''].filter(Boolean).join(' · ')}</span></span><span class="finding-title">${esc(i.title)}</span><span class="finding-area">${esc(i.area)}</span></button>`).join('') : '<p class="empty">No findings match. Try another filter.</p>';
   $('#findings').querySelectorAll('button').forEach(b => b.onclick = () => {if (!mayLeave()) return; dirty = false; active = b.dataset.id; tab = 'finding'; history.replaceState(null,'',`#${active}`); drawList(); drawDetail();});
 }
@@ -92,8 +92,8 @@ function drawDetail() {
   $('#draft-text').oninput = () => {localFeedback('#review-feedback','');dirty = true; $('.draft-status').textContent = 'Unsaved edits'; $('#approve').textContent = 'Approve & add to selected'; $('#approve').disabled = false;};
   $('.stale-warning').hidden = !i.review.stale;
   $('.draft-status').textContent = dirty ? 'Unsaved edits' : reviewStatus(i)==='selected' ? '✓ Approved and saved to selected file' : i.review.draft ? 'Draft saved · awaiting your approval' : 'No draft yet';
-  $('#approve').textContent = reviewStatus(i)==='selected' ? '✓ Selected' : 'Approve & add to selected';
-  $('#approve').disabled = reviewStatus(i)==='selected'; $('#remove').hidden = reviewStatus(i)!=='selected';
+  $('#approve').textContent = reviewStatus(i)==='selected' && !dirty ? '✓ Selected' : 'Approve & add to selected';
+  $('#approve').disabled = reviewStatus(i)==='selected' && !dirty; $('#remove').hidden = reviewStatus(i)!=='selected';
   document.querySelectorAll('[data-tab]').forEach(b => {
     b.onclick = () => setTab(b.dataset.tab);
     b.onkeydown = e => {if (!['ArrowLeft','ArrowRight','Home','End'].includes(e.key)) return; e.preventDefault(); const tabs = ['finding','discuss','draft'];const index = e.key==='Home'?0:e.key==='End'?2:(tabs.indexOf(tab)+(e.key==='ArrowRight'?1:2))%3;setTab(tabs[index]); $(`[data-tab="${tabs[index]}"]`).focus();};
@@ -115,13 +115,16 @@ function updateBusy() {
 }
 async function saveReview(approved) {
   const i = current(); const buttons = [...document.querySelectorAll('#save-draft,#approve,#remove')]; buttons.forEach(b => b.disabled=true);
+  const submittedDraft=$('#draft-text').value, submittedSeverity=$('#selection-severity').value;
   localFeedback('#review-feedback','Saving…');
   try {
-    const review = await api('/api/review',{id:i.id,draft:$('#draft-text').value,approved,version:i.review.version,severity:$('#selection-severity').value});
-    i.review = review; dirty = false; drawNav();drawList();drawDetail();
-    localFeedback('#review-feedback',approved?'Approved and added to selected-issues.md.':'Draft saved; this issue is not selected.');
+    const review = await api('/api/review',{id:i.id,draft:submittedDraft,approved,version:i.review.version,severity:submittedSeverity});
+    i.review = review;
+    if(active===i.id){dirty=$('#draft-text').value!==submittedDraft || $('#selection-severity').value!==submittedSeverity;drawDetail();}
+    drawNav();drawList();
+    if(active===i.id)localFeedback('#review-feedback',approved?'Approved and added to selected-issues.md.':'Draft saved; this issue is not selected.');
     notice(approved ? `${i.id} approved and saved to selected-issues.md.` : `${i.id} saved as a draft. It is not in the selected file.`);
-  } catch(e) {localFeedback('#review-feedback',e.message,true);notice(e.message,true); buttons.forEach(b => b.disabled=false);}
+  } catch(e) {if(active===i.id)localFeedback('#review-feedback',e.message,true);notice(e.message,true); buttons.forEach(b => b.disabled=false);}
 }
 async function startJob(kind, question='') {
   if (kind==='draft' && !mayLeave()) return;
@@ -187,8 +190,12 @@ $('#reload-selected').onclick=async()=>{
 $('#save-selected').onclick=async()=>{
   $('#save-selected').disabled=true;
   try{
-    const doc=await api('/api/selection',{content:$('#selected-editor').value,revision:selectionRevision});
-    selectionRevision=doc.revision;$('#selected-editor').value=doc.content;if(!$('#selected-preview').hidden)selectedMode(true);selectionDirty=false;$('#selected-save-status').textContent='Saved to selected-issues.md';
+    const submitted=$('#selected-editor').value;
+    const doc=await api('/api/selection',{content:submitted,revision:selectionRevision});
+    selectionRevision=doc.revision;selectionDirty=$('#selected-editor').value!==submitted;
+    if(!selectionDirty)$('#selected-editor').value=doc.content;
+    if(!$('#selected-preview').hidden)selectedMode(true);
+    $('#selected-save-status').textContent=selectionDirty?'Unsaved edits kept in editor':'Saved to selected-issues.md';
     await refreshIssue(active);localFeedback('#selected-feedback','Selected file saved. Issue selections are in sync.');
   }catch(e){localFeedback('#selected-feedback',e.message,true);}
   finally{$('#save-selected').disabled=false;}

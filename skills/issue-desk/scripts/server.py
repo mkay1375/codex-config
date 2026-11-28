@@ -113,7 +113,7 @@ def issue_projects():
 
 def selection_sections(content):
     """Recognize issue headings outside fenced code; leave all other Markdown intact."""
-    headings, fence, offset = [], None, 0
+    headings, endings, fence, offset = [], {}, None, 0
     for line in content.splitlines(keepends=True):
         marker = re.match(r'^ {0,3}(`{3,}|~{3,})(.*)$', line.rstrip('\r\n'))
         if marker:
@@ -123,6 +123,9 @@ def selection_sections(content):
             elif run[0] == fence[0] and len(run) >= len(fence) and not tail.strip():
                 fence = None
         elif fence is None:
+            ending = re.fullmatch(r'<!-- issue-desk:end ([A-Z][A-Z0-9-]*-\d+) -->\s*', line)
+            if ending:
+                endings.setdefault(ending[1], []).append((offset, offset + len(line)))
             heading = re.match(r'^(#{1,4}) +(.+?)\s*$', line)
             if heading:
                 headings.append((offset, offset + len(line), len(heading[1]), heading[2]))
@@ -130,16 +133,23 @@ def selection_sections(content):
     sections = {}
     for index, (start, body_start, level, title) in enumerate(headings):
         ident = re.match(r'^([A-Z][A-Z0-9-]*-\d+)(?:\s|$)', title)
-        if level in (3, 4) and ident and ident[1] in ISSUES:
+        if level in (3, 4) and ident:
             if ident[1] in sections:
                 raise ValueError(f'Duplicate issue heading: {ident[1]}. Keep one section per issue.')
-            end = next((h[0] for h in headings[index + 1:] if
-                        (h[2] <= 2 and h[3] in issue_projects()) or
-                        (h[2] == 3 and h[3] in SEVERITY) or
-                        (h[2] in (3, 4) and re.match(r'^([A-Z][A-Z0-9-]*-\d+)(?:\s|$)', h[3]) and
-                         re.match(r'^([A-Z][A-Z0-9-]*-\d+)(?:\s|$)', h[3])[1] in ISSUES)), len(content))
+            boundary = next((h[0] for h in headings[index + 1:] if h[2] <= 2 or
+                             (h[2] == 3 and h[3] in SEVERITY) or
+                             (h[2] in (3, 4) and re.match(r'^([A-Z][A-Z0-9-]*-\d+)(?:\s|$)', h[3]))), len(content))
+            # Explicit end markers keep custom headings inside a draft while preserving
+            # independent notes following that draft. Unmarked legacy blocks use headings.
+            marker_end = next((e for e in endings.get(ident[1], []) if e[0] >= body_start), None)
+            next_issue = next((h[0] for h in headings[index + 1:] if h[2] in (3,4) and
+                               re.match(r'^([A-Z][A-Z0-9-]*-\d+)(?:\s|$)', h[3])), len(content))
+            if marker_end and marker_end[0] < next_issue:
+                body_end, end = marker_end
+            else:
+                body_end = end = boundary
             severity = next((h[3] for h in reversed(headings[:index]) if (h[2] == 3 and h[3] in SEVERITY) or h[2] == 2), None)
-            sections[ident[1]] = dict(start=start, end=end, level=level, severity=severity if severity in SEVERITY else None, body=content[body_start:end].strip())
+            sections[ident[1]] = dict(start=start, end=end, level=level, severity=severity if severity in SEVERITY else None, body=content[body_start:body_end].strip())
     return sections, headings
 
 
@@ -161,7 +171,7 @@ def sync_selection(conn):
 def edit_selection(content, ident, draft, severity=None):
     severity = severity or ISSUES[ident]['severity']
     sections, headings = selection_sections(content)
-    block = f'#### {ident}\n\n{draft.strip()}\n\n' if draft is not None else ''
+    block = f'#### {ident}\n\n{draft.strip()}\n\n<!-- issue-desk:end {ident} -->\n\n' if draft is not None else ''
     if ident in sections:
         section = sections[ident]
         if draft is None or section['severity'] == severity:
@@ -194,7 +204,7 @@ def edit_selection(content, ident, draft, severity=None):
 def migrate_selection(content):
     """Upgrade legacy issue headings, preserving each body and other manual text."""
     sections, _ = selection_sections(content)
-    legacy = [(ident, section) for ident, section in sections.items() if section['level'] == 3]
+    legacy = [(ident, section) for ident, section in sections.items() if section['level'] == 3 and ident in ISSUES]
     for ident, section in sorted(legacy, key=lambda item: item[1]['start'], reverse=True):
         content = content[:section['start']] + content[section['end']:]
     for ident, section in legacy:

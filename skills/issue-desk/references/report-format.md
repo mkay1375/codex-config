@@ -19,3 +19,5 @@ Describe the evidence, conditions, impact and proposed fix.
 Evidence links can be absolute or relative to the reports root, but must resolve inside that root. Severity is exactly Critical, High, Medium or Low. Each row needs a matching explicit anchor and `### ID — Title` detail heading. A top-level `##` section after the final finding ends that detail. Unsupported rows or duplicate IDs fail with an error; do not silently omit findings.
 
 Reports are read at server startup. Restart to pick up changes; drafts retain fingerprints so changed source findings are flagged for fresh review. Keep selected-file heading conventions when editing: `## project`, `### severity`, `#### ID`. Older `### ID` selected sections migrate without rewriting their bodies.
+
+App-written selected blocks include hidden `<!-- issue-desk:end ID -->` markers. Keep these markers when editing to distinguish custom headings inside a draft from independent notes after it. Remove the whole block, including its marker, to unselect an issue.

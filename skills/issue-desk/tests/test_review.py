@@ -173,7 +173,7 @@ class Review(unittest.TestCase):
         app.update_review('APP-02','Keep draft.',False,1)
         sections,_=app.selection_sections(app.EXPORT.read_text())
         self.assertEqual(set(sections),{'APP-01','APP-03','APP-17'})
-        self.assertIn('### High\n\n#### APP-03',app.EXPORT.read_text())
+        self.assertRegex(app.EXPORT.read_text(),r'### High\s+#### APP-03')
 
     def test_generated_draft_has_only_problem_and_solution(self):
         class Result:
@@ -209,6 +209,19 @@ class Review(unittest.TestCase):
         doc=app.selection_document()
         app.save_selection(doc['content'].replace('### Low','### Medium'), doc['revision'])
         self.assertEqual(self.review()['selected_severity'], 'Medium')
+
+    def test_reapproval_preserves_independent_notes_and_removed_report_issue(self):
+        app.update_review('APP-02','Current draft.',True,0)
+        app.update_review('APP-03','Old source finding.',True,0)
+        doc=app.selection_document()
+        app.save_selection(doc['content']+'\n## Personal notes\n\nKeep my notes.\n',doc['revision'])
+        del app.ISSUES['APP-03']
+        with app.connect() as conn:
+            app.sync_selection(conn)
+        self.assertEqual(self.review('APP-02')['draft'],'Current draft.')
+        app.update_review('APP-02','Revised draft.',True,self.review('APP-02')['version'])
+        self.assertIn('Old source finding.',app.EXPORT.read_text())
+        self.assertIn('Keep my notes.',app.EXPORT.read_text())
 
     def test_processed_persists_independently_of_selection(self):
         app.set_processed('APP-01', True)
