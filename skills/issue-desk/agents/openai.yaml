@@ -1,0 +1,4 @@
+interface:
+  display_name: "Issue Desk"
+  short_description: "Review audit findings and curate selected fixes"
+  default_prompt: "Use $issue-desk to open a local review desk for the audit reports in this folder."
