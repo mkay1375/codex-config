@@ -31,7 +31,7 @@ The app stores conversations, drafts, severity choices and processed flags in `<
 - Choose **Severity in selected file** before approval. This overrides the selected file's grouping only; the source report keeps its original severity.
 - Approval writes `## project` → `### severity` → `#### ID`, followed by the reviewed draft. Severity groups are ordered Critical, High, Medium, Low.
 - **Selected file** opens the actual Markdown file for editing, deletion and formatted preview. Preserve manual edits. Removing an issue section unselects it but retains its draft and conversation. Conflicting saves keep editor text and require reloading the file before retrying.
-- **Mark processed** records review completion independently of selection or whether code is fixed. It persists and can be filtered.
+- Adding from Finding or approving a draft also marks that issue processed. Explicit **Mark processed** does the same without selecting it. Both advance to the next unprocessed issue in the current filtered list (wrapping to earlier remaining issues); if none remain, stay on the current issue. Reversing processed status does not navigate. Unsaved draft edits made during a request are kept rather than discarded by navigation. Processed means reviewed, not that the code is fixed.
 
 Light/dark themes follow System by default. Project, finding and content panes scroll independently. Generated English drafts use local system fonts; multilingual text has system fallbacks.
 

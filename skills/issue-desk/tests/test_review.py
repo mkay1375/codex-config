@@ -278,6 +278,20 @@ class Review(unittest.TestCase):
         self.assertLess(content.index('#### APP-02'),content.index('## Personal notes'))
         self.assertIn('Notes stay here.',content)
 
+    def test_approval_marks_processed_atomically_but_draft_save_does_not(self):
+        app.update_review('APP-01','Problem: Example.\nSolution: Fix it.',False,0)
+        self.assertFalse(self.review()['processed'])
+        with self.assertRaises(ValueError):
+            app.update_review('APP-01','',True,1)
+        self.assertFalse(self.review()['processed'])
+        approved=app.update_review('APP-01','Problem: Example.\nSolution: Fix it.',True,1)
+        self.assertTrue(approved['approved'])
+        self.assertTrue(approved['processed'])
+        app.initialize()
+        self.assertTrue(self.review()['processed'])
+        app.update_review('APP-01','Keep the draft.',False,approved['version'])
+        self.assertTrue(self.review()['processed'])
+
     def test_processed_persists_independently_of_selection(self):
         app.set_processed('APP-01', True)
         self.assertTrue(self.review()['processed'])

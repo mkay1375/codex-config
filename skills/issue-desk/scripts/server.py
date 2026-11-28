@@ -317,6 +317,8 @@ def update_review(ident, draft, approve, version, severity=None):
         conn.execute('INSERT INTO selection_severity VALUES (?,?) ON CONFLICT(id) DO UPDATE SET severity=excluded.severity', (ident, severity))
         conn.execute('INSERT INTO reviews VALUES (?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET draft=excluded.draft, approved=excluded.approved, version=excluded.version, fingerprint=excluded.fingerprint, reserved=excluded.reserved',
                      (ident, draft, int(approve), version + 1, ISSUES[ident]['fingerprint'], draft.strip() if approve else ''))
+        if approve:
+            conn.execute('INSERT INTO processing VALUES (?,1) ON CONFLICT(id) DO UPDATE SET processed=1', (ident,))
         write_selection(content)
         return state(conn, ident)
 

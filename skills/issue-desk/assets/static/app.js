@@ -56,6 +56,18 @@ function drawList() {
   $('#findings').innerHTML = filtered.length ? filtered.map(i => `<button class="finding ${active===i.id?'active':''}" data-id="${i.id}" ${active===i.id?'aria-current="true"':''}><span class="finding-top"><span class="badge ${i.severity.toLowerCase()}">${i.severity}</span><span class="finding-id">${i.id}</span><span class="review-indicator">${[reviewStatus(i)==='selected'?'✓ Selected':reviewStatus(i)==='draft'?'Draft':'', i.review.processed?'Processed':''].filter(Boolean).join(' · ')}</span></span><span class="finding-title">${esc(i.title)}</span><span class="finding-area">${esc(i.area)}</span></button>`).join('') : '<p class="empty">No findings match. Try another filter.</p>';
   $('#findings').querySelectorAll('button').forEach(b => b.onclick = () => {if (!mayLeave()) return; dirty = false; active = b.dataset.id; tab = 'finding'; history.replaceState(null,'',`#${active}`); drawList(); drawDetail();});
 }
+function reviewQueue() {return [...document.querySelectorAll('#findings [data-id]')].map(button=>button.dataset.id);}
+function advanceProcessed(ident, queue) {
+  if(active!==ident || dirty)return false;
+  const index=queue.indexOf(ident);
+  const ordered=index<0?queue:[...queue.slice(index+1),...queue.slice(0,index)];
+  const next=ordered.find(id=>id!==ident && !data.issues.find(issue=>issue.id===id)?.review.processed);
+  if(!next)return false;
+  active=next;tab='finding';history.replaceState(null,'',`#${active}`);
+  drawNav();drawList();drawDetail();$('#detail').scrollTop=0;
+  $(`#findings [data-id="${active}"]`)?.scrollIntoView({block:'nearest'});
+  return true;
+}
 function setTab(value) {
   tab = value;
   document.querySelectorAll('[data-tab]').forEach(b => {b.setAttribute('aria-selected', b.dataset.tab===tab); b.tabIndex = b.dataset.tab===tab ? 0 : -1;});
@@ -70,7 +82,7 @@ function drawDetail() {
   $('.severity-badge').textContent = i.severity; $('.severity-badge').classList.add(i.severity.toLowerCase());
   $('#toggle-processed').textContent=i.review.processed?'✓ Processed':'Mark processed';
   $('#toggle-processed').setAttribute('aria-pressed',String(i.review.processed));
-  $('#toggle-processed').onclick=async()=>{const button=$('#toggle-processed');button.disabled=true;try{const result=await api('/api/processed',{id:i.id,processed:!i.review.processed});i.review.processed=result.processed;button.textContent=result.processed?'✓ Processed':'Mark processed';button.setAttribute('aria-pressed',String(result.processed));drawList();drawNav();notice(`${i.id} marked ${result.processed?'processed':'not processed'}.`);}catch(e){notice(e.message,true);}finally{button.disabled=false;}};
+  $('#toggle-processed').onclick=async()=>{const queue=reviewQueue();const button=$('#toggle-processed');button.disabled=true;try{const result=await api('/api/processed',{id:i.id,processed:!i.review.processed});i.review.processed=result.processed;data.issues.find(issue=>issue.id===i.id).review.processed=result.processed;if(result.processed && advanceProcessed(i.id,queue))return;button.textContent=result.processed?'✓ Processed':'Mark processed';button.setAttribute('aria-pressed',String(result.processed));drawList();drawNav();notice(`${i.id} marked ${result.processed?'processed':'not processed'}.`);}catch(e){notice(e.message,true);}finally{button.disabled=false;}};
   $('.issue-id').textContent = i.id; $('.area').textContent = i.area; $('.issue-title').textContent = i.title;
   $('.source-link').textContent = i.evidence_label; $('.source-link').onclick = async () => {try {await navigator.clipboard.writeText(`${i.evidence_path}:${i.evidence_line}`);notice('Source location copied.');}catch {notice(`Source: ${i.evidence_path}:${i.evidence_line}`);}};
   $('.report-name').textContent = i.report;
@@ -129,6 +141,7 @@ function updateBusy() {
 async function saveReview(approved, initialDraft=null, initialSeverity=null) {
   if(initialDraft!==null)$('#draft-text').value=initialDraft;
   if(initialSeverity!==null)$('#selection-severity').value=initialSeverity;
+  const queue=reviewQueue();
   const feedback=tab==='finding'?'#finding-feedback':'#review-feedback';
   const i = current(); const buttons = [...document.querySelectorAll('#save-draft,#approve,#remove,#add-finding')]; buttons.forEach(b => b.disabled=true);
   const submittedDraft=$('#draft-text').value, submittedSeverity=$('#selection-severity').value;
@@ -136,7 +149,9 @@ async function saveReview(approved, initialDraft=null, initialSeverity=null) {
   try {
     const review = await api('/api/review',{id:i.id,draft:submittedDraft,approved,version:editorVersion,severity:submittedSeverity});
     i.review = review;
+    data.issues.find(issue=>issue.id===i.id).review=review;
     if(active===i.id){editorVersion=review.version;dirty=$('#draft-text').value!==submittedDraft || $('#selection-severity').value!==submittedSeverity;drawDetail();}
+    if(approved && review.processed && advanceProcessed(i.id,queue))return;
     drawNav();drawList();
     if(active===i.id)localFeedback(feedback,approved?'Approved and added to selected-issues.md.':'Draft saved; this issue is not selected.');
     notice(approved ? `${i.id} approved and saved to selected-issues.md.` : `${i.id} saved as a draft. It is not in the selected file.`);
